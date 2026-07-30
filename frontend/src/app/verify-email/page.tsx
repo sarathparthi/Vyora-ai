@@ -12,7 +12,6 @@ function VerifyEmailForm() {
 
   const [email, setEmail] = useState('');
   const [otp, setOtp] = useState('');
-  const [demoCode, setDemoCode] = useState('');
   const [timer, setTimer] = useState(600);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -21,8 +20,6 @@ function VerifyEmailForm() {
   useEffect(() => {
     const savedEmail = emailParam || localStorage.getItem('vyora_verify_email') || '';
     setEmail(savedEmail);
-    const demo = localStorage.getItem('vyora_otp_demo') || '483921';
-    setDemoCode(demo);
 
     const interval = setInterval(() => {
       setTimer((prev) => (prev > 0 ? prev - 1 : 0));
@@ -67,14 +64,7 @@ function VerifyEmailForm() {
         router.push('/login');
       }, 1500);
     } catch (err: any) {
-      if (otp === demoCode || otp === '483921') {
-        setSuccess('Email verified successfully! Redirecting to login...');
-        setTimeout(() => {
-          router.push('/login');
-        }, 1500);
-      } else {
-        setError(err.message || 'Invalid verification code. Please check and try again.');
-      }
+      setError(err.message || 'Invalid verification code. Please check your email inbox and try again.');
     } finally {
       setLoading(false);
     }
@@ -88,18 +78,11 @@ function VerifyEmailForm() {
         </div>
         <h1 className="text-2xl font-extrabold tracking-tight text-white">Email Verification</h1>
         <p className="text-xs text-slate-400">
-          A 6-digit OTP code has been sent to <span className="font-semibold text-white">{email || 'your email'}</span>
+          A 6-digit OTP code has been sent to <span className="font-semibold text-white">{email || 'your email'}</span>. Check your inbox.
         </p>
       </div>
 
       <div className="glass-card p-8 rounded-3xl space-y-6 border border-slate-800 shadow-2xl">
-        {demoCode && (
-          <div className="p-3.5 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-300 text-xs flex items-center justify-between">
-            <span>Verification OTP Code: <b className="text-white text-sm font-mono tracking-widest">{demoCode}</b></span>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20">Demo Code</span>
-          </div>
-        )}
-
         {error && (
           <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-semibold">
             {error}
@@ -115,12 +98,12 @@ function VerifyEmailForm() {
 
         <form onSubmit={handleVerify} className="space-y-4">
           <div>
-            <label className="text-xs text-slate-400 block mb-2 font-medium text-center">Enter 6-Digit Code</label>
+            <label className="text-xs text-slate-400 block mb-2 font-medium text-center">Enter 6-Digit Code From Email</label>
             <input
               type="text"
               maxLength={6}
               required
-              placeholder="483921"
+              placeholder="••••••"
               value={otp}
               onChange={(e) => setOtp(e.target.value.replace(/[^0-9]/g, ''))}
               className="w-full text-center text-2xl font-mono tracking-[0.5em] bg-slate-900 border border-slate-800 rounded-2xl py-3 text-white focus:outline-none focus:border-blue-500"

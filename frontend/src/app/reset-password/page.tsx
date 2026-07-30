@@ -12,7 +12,6 @@ function ResetPasswordForm() {
 
   const [email, setEmail] = useState('');
   const [otp, setOtp] = useState('');
-  const [demoCode, setDemoCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
@@ -22,8 +21,6 @@ function ResetPasswordForm() {
   useEffect(() => {
     const savedEmail = emailParam || localStorage.getItem('vyora_reset_email') || '';
     setEmail(savedEmail);
-    const demo = localStorage.getItem('vyora_reset_otp_demo') || '629418';
-    setDemoCode(demo);
   }, [emailParam]);
 
   const hasMinLength = newPassword.length >= 12;
@@ -41,7 +38,7 @@ function ResetPasswordForm() {
     setSuccess('');
 
     if (!otp || otp.length !== 6) {
-      setError('Please enter a valid 6-digit reset OTP code.');
+      setError('Please enter a valid 6-digit reset OTP code from your email.');
       return;
     }
 
@@ -105,18 +102,11 @@ function ResetPasswordForm() {
         </div>
         <h1 className="text-2xl font-extrabold tracking-tight text-white">Reset Account Password</h1>
         <p className="text-xs text-slate-400">
-          Set a new password for <span className="font-semibold text-white">{email || 'your account'}</span>
+          Enter the 6-digit OTP sent to <span className="font-semibold text-white">{email || 'your email'}</span>
         </p>
       </div>
 
       <div className="glass-card p-8 rounded-3xl space-y-6 border border-slate-800 shadow-2xl">
-        {demoCode && (
-          <div className="p-3.5 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-300 text-xs flex items-center justify-between">
-            <span>Password Reset OTP Code: <b className="text-white text-sm font-mono tracking-widest">{demoCode}</b></span>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20">OTP Code</span>
-          </div>
-        )}
-
         {error && (
           <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-semibold">
             {error}
@@ -132,12 +122,12 @@ function ResetPasswordForm() {
 
         <form onSubmit={handleReset} className="space-y-4">
           <div>
-            <label className="text-xs text-slate-400 block mb-1 font-medium">6-Digit Reset OTP Code</label>
+            <label className="text-xs text-slate-400 block mb-1 font-medium">6-Digit Reset OTP Code (From Email)</label>
             <input
               type="text"
               maxLength={6}
               required
-              placeholder="629418"
+              placeholder="••••••"
               value={otp}
               onChange={(e) => setOtp(e.target.value.replace(/[^0-9]/g, ''))}
               className="w-full text-center text-xl font-mono tracking-[0.4em] bg-slate-900 border border-slate-800 rounded-xl py-2.5 text-white focus:border-blue-500 outline-none"

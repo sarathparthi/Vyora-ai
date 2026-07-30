@@ -4,6 +4,7 @@ import path from 'path';
 import { prisma } from '../config/db';
 import { ENV } from '../config/env';
 import { SecurityService } from './securityService';
+import { EmailService } from './emailService';
 
 export interface RegisterDTO {
   email: string;
@@ -20,9 +21,6 @@ export interface LoginDTO {
 }
 
 export class AuthService {
-  /**
-   * Helper to log registered developer accounts into dev_accounts.json for developer reference
-   */
   private static saveDevAccount(account: { name: string; email: string; password: string }) {
     try {
       const filePath = path.join(process.cwd(), 'dev_accounts.json');
@@ -33,7 +31,6 @@ export class AuthService {
         accounts = JSON.parse(fileData || '[]');
       }
 
-      // Filter out existing email if already logged
       accounts = accounts.filter((a) => a.email !== account.email);
 
       accounts.push({
@@ -49,19 +46,14 @@ export class AuthService {
     }
   }
 
-  /**
-   * Registers a new User account with 12+ char password complexity and 6-digit OTP
-   */
   static async registerUser(dto: RegisterDTO) {
     const emailLower = dto.email.toLowerCase().trim();
 
-    // Check duplicate email
     const existing = await prisma.user.findUnique({ where: { email: emailLower } });
     if (existing) {
       throw new Error('An account with this email address already exists.');
     }
 
-    // Validate password policy
     const policyCheck = SecurityService.validatePasswordPolicy(dto.password);
     if (!policyCheck.isValid) {
       throw new Error(policyCheck.message);
@@ -78,13 +70,10 @@ export class AuthService {
       },
     });
 
-    // Save developer reference account in dev_accounts.json
     this.saveDevAccount({ name: dto.name, email: emailLower, password: dto.password });
-
-    // Record initial password in history
     await SecurityService.recordPasswordHistory(user.id, passwordHash);
 
-    // Generate 6-Digit Email Verification OTP
+    // Generate 6-Digit Verification OTP Code
     const otp = SecurityService.generateOTP();
     const otpHash = await SecurityService.hashOTP(otp);
 
@@ -92,16 +81,18 @@ export class AuthService {
       data: {
         email: emailLower,
         otpHash,
-        expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 mins
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
       },
     });
 
-    // Log security audit event
+    // Send Real Email with 6-digit OTP code
+    await EmailService.sendVerificationEmail(emailLower, dto.name, otp);
+
     await prisma.securityAuditLog.create({
       data: {
         userId: user.id,
         event: 'USER_REGISTERED',
-        details: `User registered: ${emailLower}. Verification OTP generated.`,
+        details: `User registered: ${emailLower}. Verification OTP sent via email.`,
         ipAddress: '127.0.0.1',
         userAgent: 'Registration Form',
       },
@@ -111,14 +102,10 @@ export class AuthService {
       userId: user.id,
       email: user.email,
       name: user.name,
-      message: 'Registration successful! Verification OTP code sent to your email.',
-      otpDemo: otp,
+      message: 'Registration successful! Verification OTP code sent directly to your email address.',
     };
   }
 
-  /**
-   * Verifies 6-Digit Email OTP
-   */
   static async verifyEmailOTP(email: string, otp: string) {
     const emailLower = email.toLowerCase().trim();
     const record = await prisma.emailOTP.findFirst({
@@ -147,13 +134,11 @@ export class AuthService {
       throw new Error('Invalid verification code.');
     }
 
-    // Mark user verified
     const user = await prisma.user.update({
       where: { email: emailLower },
       data: { isVerified: true },
     });
 
-    // Delete used OTP
     await prisma.emailOTP.deleteMany({ where: { email: emailLower } });
 
     await prisma.securityAuditLog.create({
@@ -169,9 +154,6 @@ export class AuthService {
     return { success: true, message: 'Email address verified successfully!' };
   }
 
-  /**
-   * Authenticates user with email/password, Argon2id, lockout check, and device session logging
-   */
   static async loginUser(dto: LoginDTO) {
     const emailLower = dto.email.toLowerCase().trim();
     const genericError = 'Invalid email or password.';
@@ -181,23 +163,20 @@ export class AuthService {
       throw new Error(genericError);
     }
 
-    // Save developer reference account on successful login
     this.saveDevAccount({ name: user.name, email: emailLower, password: dto.password });
 
-    // Check account lockout
     if (SecurityService.isAccountLocked(user.lockedUntil)) {
       const remainingMins = Math.ceil((new Date(user.lockedUntil!).getTime() - Date.now()) / 60000);
       throw new Error(`Too many failed login attempts. Your account has been temporarily locked. Try again in ${remainingMins} minutes.`);
     }
 
-    // Verify Password with Argon2id
     const isMatch = await SecurityService.verifyPassword(user.passwordHash, dto.password);
     if (!isMatch) {
       const attempts = user.failedLoginAttempts + 1;
       let updateData: any = { failedLoginAttempts: attempts };
 
       if (attempts >= 5) {
-        updateData.lockedUntil = new Date(Date.now() + 15 * 60 * 1000); // 15 mins lock
+        updateData.lockedUntil = new Date(Date.now() + 15 * 60 * 1000);
         await prisma.securityAuditLog.create({
           data: {
             userId: user.id,
@@ -231,12 +210,10 @@ export class AuthService {
       throw new Error(genericError);
     }
 
-    // Check email verification
     if (!user.isVerified) {
       throw new Error('Please verify your email address before signing in.');
     }
 
-    // Reset failed login count on clean login
     await prisma.user.update({
       where: { id: user.id },
       data: { failedLoginAttempts: 0, lockedUntil: null },
@@ -290,15 +267,12 @@ export class AuthService {
     };
   }
 
-  /**
-   * Requests Password Reset OTP code
-   */
   static async requestPasswordReset(email: string) {
     const emailLower = email.toLowerCase().trim();
     const user = await prisma.user.findUnique({ where: { email: emailLower } });
 
     if (!user) {
-      return { message: 'If an account exists for this email, a password reset OTP code has been sent.' };
+      return { message: 'If an account exists for this email, a password reset OTP code has been sent to your inbox.' };
     }
 
     const otp = SecurityService.generateOTP();
@@ -312,25 +286,24 @@ export class AuthService {
       },
     });
 
+    // Send Real Email with Password Reset OTP
+    await EmailService.sendPasswordResetEmail(emailLower, user.name, otp);
+
     await prisma.securityAuditLog.create({
       data: {
         userId: user.id,
         event: 'PASSWORD_RESET_REQUESTED',
-        details: `Password reset OTP requested.`,
+        details: `Password reset OTP sent to email.`,
         ipAddress: '127.0.0.1',
         userAgent: 'Forgot Password Form',
       },
     });
 
     return {
-      message: 'If an account exists for this email, a password reset OTP code has been sent.',
-      otpDemo: otp,
+      message: 'If an account exists for this email, a password reset OTP code has been sent to your inbox.',
     };
   }
 
-  /**
-   * Resets user password enforcing complexity policy & 5-password history exclusion
-   */
   static async resetPassword(email: string, otp: string, newPassword: string) {
     const emailLower = email.toLowerCase().trim();
     const user = await prisma.user.findUnique({ where: { email: emailLower } });
@@ -367,9 +340,7 @@ export class AuthService {
       data: { passwordHash, failedLoginAttempts: 0, lockedUntil: null },
     });
 
-    // Update dev_accounts.json reference
     this.saveDevAccount({ name: user.name, email: emailLower, password: newPassword });
-
     await SecurityService.recordPasswordHistory(user.id, passwordHash);
 
     await prisma.refreshToken.deleteMany({ where: { userId: user.id } });
