@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Sparkles, ShieldCheck, ArrowRight, Lock, Mail, User, Code, AlertCircle } from 'lucide-react';
-import { API_BASE, getUserAccountStore } from '@/lib/api';
+import { API_BASE } from '@/lib/api';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -46,12 +47,10 @@ export default function LoginPage() {
         throw new Error(data.message || 'Invalid email or password.');
       }
 
-      // Successful API Login
       localStorage.setItem('vyora_token', data.data.accessToken || `token_${Date.now()}`);
       localStorage.setItem('vyora_user', JSON.stringify(data.data.user));
       router.push('/');
     } catch (apiErr: any) {
-      // Offline / Local Auth Validation (Strict verification - NO bypass!)
       if (isRegister) {
         if (!name || !emailLower || !password) {
           setError('Full name, email, and password are required.');
@@ -59,7 +58,6 @@ export default function LoginPage() {
           return;
         }
 
-        // Save registered user account locally
         const existingUsersStr = localStorage.getItem('vyora_registered_users') || '[]';
         let registeredUsers: any[] = [];
         try {
@@ -76,16 +74,13 @@ export default function LoginPage() {
         registeredUsers.push(newUser);
         localStorage.setItem('vyora_registered_users', JSON.stringify(registeredUsers));
 
-        // Save user to dev_accounts
         setDevAccounts((prev) => [...prev.filter((a) => a.email !== emailLower), { name, email: emailLower, password }]);
 
-        // Redirect to OTP Verification
         localStorage.setItem('vyora_verify_email', emailLower);
         localStorage.setItem('vyora_otp_demo', '483921');
         router.push(`/verify-email?email=${encodeURIComponent(emailLower)}`);
         return;
       } else {
-        // LOGIN VERIFICATION: Strictly check password match against registered users
         const existingUsersStr = localStorage.getItem('vyora_registered_users') || '[]';
         let registeredUsers: any[] = [];
         try {
@@ -95,38 +90,31 @@ export default function LoginPage() {
         const matchedUser = registeredUsers.find((u: any) => u.email === emailLower);
 
         if (!matchedUser) {
-          // Check demo accounts list
           const matchedDev = devAccounts.find((a: any) => a.email.toLowerCase() === emailLower);
           if (matchedDev) {
             if (matchedDev.password !== password) {
-              // WRONG PASSWORD -> STRICTLY DENY ACCESS!
               setError('Invalid email or password.');
               setLoading(false);
               return;
             }
 
-            // Correct password for dev account
             localStorage.setItem('vyora_token', `token_${Date.now()}`);
             localStorage.setItem('vyora_user', JSON.stringify({ name: matchedDev.name, email: matchedDev.email, role: 'USER' }));
             router.push('/');
             return;
           }
 
-          // Email not found -> STRICTLY DENY ACCESS!
           setError('Invalid email or password.');
           setLoading(false);
           return;
         }
 
-        // Email found -> Verify password
         if (matchedUser.password !== password) {
-          // WRONG PASSWORD -> STRICTLY DENY ACCESS!
           setError('Invalid email or password.');
           setLoading(false);
           return;
         }
 
-        // CORRECT PASSWORD -> Grant Access
         localStorage.setItem('vyora_token', `token_${Date.now()}`);
         localStorage.setItem('vyora_user', JSON.stringify({ name: matchedUser.name, email: matchedUser.email, role: 'USER' }));
         router.push('/');
@@ -222,9 +210,13 @@ export default function LoginPage() {
               <div className="flex justify-between items-center mb-1.5">
                 <label className="text-xs text-slate-400 font-medium">Password</label>
                 {!isRegister && (
-                  <a href="/forgot-password" className="text-[11px] text-blue-400 hover:underline">
+                  <button
+                    type="button"
+                    onClick={() => router.push('/forgot-password')}
+                    className="text-[11px] text-blue-400 hover:text-blue-300 hover:underline font-medium"
+                  >
                     Forgot Password?
-                  </a>
+                  </button>
                 )}
               </div>
               <div className="relative">
