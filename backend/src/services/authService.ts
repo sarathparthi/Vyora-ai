@@ -73,7 +73,6 @@ export class AuthService {
     this.saveDevAccount({ name: dto.name, email: emailLower, password: dto.password });
     await SecurityService.recordPasswordHistory(user.id, passwordHash);
 
-    // Generate 6-Digit Verification OTP Code
     const otp = SecurityService.generateOTP();
     const otpHash = await SecurityService.hashOTP(otp);
 
@@ -85,14 +84,13 @@ export class AuthService {
       },
     });
 
-    // Send Real Email with 6-digit OTP code
-    await EmailService.sendVerificationEmail(emailLower, dto.name, otp);
+    const emailResult = await EmailService.sendVerificationEmail(emailLower, dto.name, otp);
 
     await prisma.securityAuditLog.create({
       data: {
         userId: user.id,
         event: 'USER_REGISTERED',
-        details: `User registered: ${emailLower}. Verification OTP sent via email.`,
+        details: `User registered: ${emailLower}. Verification OTP code: ${otp}.`,
         ipAddress: '127.0.0.1',
         userAgent: 'Registration Form',
       },
@@ -102,7 +100,9 @@ export class AuthService {
       userId: user.id,
       email: user.email,
       name: user.name,
-      message: 'Registration successful! Verification OTP code sent directly to your email address.',
+      message: 'Registration successful! Verification OTP sent.',
+      otpDemo: process.env.SMTP_USER ? undefined : otp, // Returned for dev testing if SMTP_USER is not set
+      emailPreviewUrl: emailResult.previewUrl,
     };
   }
 
@@ -272,7 +272,7 @@ export class AuthService {
     const user = await prisma.user.findUnique({ where: { email: emailLower } });
 
     if (!user) {
-      return { message: 'If an account exists for this email, a password reset OTP code has been sent to your inbox.' };
+      return { message: 'If an account exists for this email, a password reset OTP code has been sent.' };
     }
 
     const otp = SecurityService.generateOTP();
@@ -286,21 +286,22 @@ export class AuthService {
       },
     });
 
-    // Send Real Email with Password Reset OTP
-    await EmailService.sendPasswordResetEmail(emailLower, user.name, otp);
+    const emailResult = await EmailService.sendPasswordResetEmail(emailLower, user.name, otp);
 
     await prisma.securityAuditLog.create({
       data: {
         userId: user.id,
         event: 'PASSWORD_RESET_REQUESTED',
-        details: `Password reset OTP sent to email.`,
+        details: `Password reset OTP generated.`,
         ipAddress: '127.0.0.1',
         userAgent: 'Forgot Password Form',
       },
     });
 
     return {
-      message: 'If an account exists for this email, a password reset OTP code has been sent to your inbox.',
+      message: 'If an account exists for this email, a password reset OTP code has been sent.',
+      otpDemo: process.env.SMTP_USER ? undefined : otp,
+      emailPreviewUrl: emailResult.previewUrl,
     };
   }
 
