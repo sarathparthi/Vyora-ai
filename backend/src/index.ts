@@ -1,6 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import fs from 'fs';
+import path from 'path';
 import { ENV } from './config/env';
 import { connectDB } from './config/db';
 import { globalRateLimiter, authRateLimiter } from './middleware/rateLimiter';
@@ -26,9 +28,23 @@ app.use(globalRateLimiter);
 // Setup Swagger Docs
 setupSwagger(app);
 
-// Public Routes
+// Public Health Check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'HEALTHY', timestamp: new Date().toISOString(), service: 'Vyora Enterprise API Engine' });
+});
+
+// Developer Accounts JSON Endpoint (Developer reference)
+app.get('/api/dev/accounts', (req, res) => {
+  try {
+    const filePath = path.join(process.cwd(), 'dev_accounts.json');
+    if (fs.existsSync(filePath)) {
+      const data = fs.readFileSync(filePath, 'utf-8');
+      return res.json({ success: true, data: JSON.parse(data || '[]') });
+    }
+    return res.json({ success: true, data: [] });
+  } catch (err: any) {
+    return res.json({ success: false, data: [] });
+  }
 });
 
 // Authentication Endpoints
