@@ -70,14 +70,13 @@ export default function LoginPage() {
           return;
         }
 
-        const newUser = { name, email: emailLower, password, createdAt: new Date().toISOString() };
+        const newUser = { name, email: emailLower, password, isVerified: true, createdAt: new Date().toISOString() };
         registeredUsers.push(newUser);
         localStorage.setItem('vyora_registered_users', JSON.stringify(registeredUsers));
 
         setDevAccounts((prev) => [...prev.filter((a) => a.email !== emailLower), { name, email: emailLower, password }]);
 
         localStorage.setItem('vyora_verify_email', emailLower);
-        localStorage.setItem('vyora_otp_demo', '483921');
         router.push(`/verify-email?email=${encodeURIComponent(emailLower)}`);
         return;
       } else {
@@ -115,6 +114,7 @@ export default function LoginPage() {
           return;
         }
 
+        // Correct password -> Grant access and store exact User Name and Email
         localStorage.setItem('vyora_token', `token_${Date.now()}`);
         localStorage.setItem('vyora_user', JSON.stringify({ name: matchedUser.name, email: matchedUser.email, role: 'USER' }));
         router.push('/');

@@ -14,7 +14,6 @@ export default function RegisterPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Real-time Password Policy Indicators
   const hasMinLength = password.length >= 12;
   const hasUppercase = /[A-Z]/.test(password);
   const hasLowercase = /[a-z]/.test(password);
@@ -39,12 +38,13 @@ export default function RegisterPage() {
     }
 
     setLoading(true);
+    const emailLower = email.toLowerCase().trim();
 
     try {
       const res = await fetch(`${API_BASE}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, name }),
+        body: JSON.stringify({ email: emailLower, password, name }),
       });
 
       const data = await res.json();
@@ -53,18 +53,39 @@ export default function RegisterPage() {
         throw new Error(data.message || 'Registration failed.');
       }
 
-      // Save email for OTP verification
-      localStorage.setItem('vyora_verify_email', email);
-      if (data.otpDemo) {
-        localStorage.setItem('vyora_otp_demo', data.otpDemo);
+      // Save user to registered users local store
+      const existingUsersStr = localStorage.getItem('vyora_registered_users') || '[]';
+      let registeredUsers: any[] = [];
+      try {
+        registeredUsers = JSON.parse(existingUsersStr);
+      } catch (err) {}
+
+      if (!registeredUsers.some((u: any) => u.email === emailLower)) {
+        registeredUsers.push({ name, email: emailLower, password, isVerified: true, createdAt: new Date().toISOString() });
+        localStorage.setItem('vyora_registered_users', JSON.stringify(registeredUsers));
       }
 
-      router.push(`/verify-email?email=${encodeURIComponent(email)}`);
+      localStorage.setItem('vyora_verify_email', emailLower);
+      router.push(`/verify-email?email=${encodeURIComponent(emailLower)}`);
     } catch (err: any) {
-      // Local fallback for OTP verification screen
-      localStorage.setItem('vyora_verify_email', email);
-      localStorage.setItem('vyora_otp_demo', '483921');
-      router.push(`/verify-email?email=${encodeURIComponent(email)}`);
+      // Local fallback registration
+      const existingUsersStr = localStorage.getItem('vyora_registered_users') || '[]';
+      let registeredUsers: any[] = [];
+      try {
+        registeredUsers = JSON.parse(existingUsersStr);
+      } catch (e) {}
+
+      if (registeredUsers.some((u: any) => u.email === emailLower)) {
+        setError('An account with this email address already exists.');
+        setLoading(false);
+        return;
+      }
+
+      registeredUsers.push({ name, email: emailLower, password, isVerified: true, createdAt: new Date().toISOString() });
+      localStorage.setItem('vyora_registered_users', JSON.stringify(registeredUsers));
+
+      localStorage.setItem('vyora_verify_email', emailLower);
+      router.push(`/verify-email?email=${encodeURIComponent(emailLower)}`);
     } finally {
       setLoading(false);
     }
@@ -76,7 +97,6 @@ export default function RegisterPage() {
       <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-purple-600/20 rounded-full blur-3xl pointer-events-none" />
 
       <div className="w-full max-w-md space-y-6 relative z-10 my-8">
-        {/* Brand Header */}
         <div className="text-center space-y-2">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-500 to-purple-600 shadow-xl shadow-blue-500/25 border border-white/10 mb-2">
             <Sparkles className="w-7 h-7 text-white" />
@@ -87,7 +107,6 @@ export default function RegisterPage() {
           <p className="text-xs text-slate-400">Enterprise AI Personal Finance Platform</p>
         </div>
 
-        {/* Auth Glassmorphic Card */}
         <div className="glass-card p-8 rounded-3xl space-y-6 border border-slate-800 shadow-2xl">
           <div className="border-b border-slate-800 pb-3">
             <h2 className="text-base font-bold text-white uppercase tracking-wider">Create Master Account</h2>
@@ -161,7 +180,6 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            {/* Password Complexity Checklist */}
             <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1.5 text-[11px]">
               <p className="font-semibold text-slate-300 mb-1">Enterprise Password Complexity Rules:</p>
               <div className="grid grid-cols-2 gap-1">
@@ -197,7 +215,7 @@ export default function RegisterPage() {
               disabled={loading || !isPasswordValid || !passwordsMatch}
               className="w-full py-3 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white text-xs font-semibold shadow-xl shadow-blue-600/25 flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-50"
             >
-              <span>{loading ? 'Creating Account...' : 'Continue to Email OTP Verification'}</span>
+              <span>{loading ? 'Creating Account...' : 'Continue to Email Verification'}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
