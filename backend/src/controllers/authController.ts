@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { AuthService } from '../services/authService';
 import { AuthRequest } from '../middleware/auth';
+import { prisma } from '../config/db';
 
 export class AuthController {
   static async register(req: Request, res: Response) {
@@ -11,7 +12,7 @@ export class AuthController {
       }
 
       const result = await AuthService.registerUser({ email, password, name });
-      return res.status(201).json({ success: true, ...result });
+      return res.status(201).json(result);
     } catch (error: any) {
       return res.status(400).json({ success: false, message: error.message });
     }
@@ -25,7 +26,7 @@ export class AuthController {
       }
 
       const result = await AuthService.verifyEmailOTP(email, otp);
-      return res.json({ success: true, ...result });
+      return res.json(result);
     } catch (error: any) {
       return res.status(400).json({ success: false, message: error.message });
     }
@@ -49,7 +50,6 @@ export class AuthController {
         userAgent,
       });
 
-      // Set Refresh Token in HttpOnly, Secure, SameSite=Strict Cookie
       res.cookie('vyora_refresh_token', result.tokens.refreshToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
@@ -69,7 +69,7 @@ export class AuthController {
       if (!email) return res.status(400).json({ success: false, message: 'Email address is required.' });
 
       const result = await AuthService.requestPasswordReset(email);
-      return res.json({ success: true, ...result });
+      return res.json(result);
     } catch (error: any) {
       return res.status(400).json({ success: false, message: error.message });
     }
@@ -83,9 +83,21 @@ export class AuthController {
       }
 
       const result = await AuthService.resetPassword(email, otp, newPassword);
-      return res.json({ success: true, ...result });
+      return res.json(result);
     } catch (error: any) {
       return res.status(400).json({ success: false, message: error.message });
+    }
+  }
+
+  static async getProfile(req: AuthRequest, res: Response) {
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: req.user!.userId },
+        select: { id: true, email: true, name: true, role: true, currency: true, avatarUrl: true, isVerified: true },
+      });
+      return res.json({ success: true, data: user });
+    } catch (error: any) {
+      return res.status(500).json({ success: false, message: error.message });
     }
   }
 
@@ -104,7 +116,7 @@ export class AuthController {
       const userId = req.user!.userId;
       const { id } = req.params;
       const result = await AuthService.revokeSession(userId, id);
-      return res.json({ success: true, ...result });
+      return res.json(result);
     } catch (error: any) {
       return res.status(400).json({ success: false, message: error.message });
     }
