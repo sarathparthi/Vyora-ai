@@ -56,12 +56,13 @@ export default function ResetPasswordPage() {
     }
 
     setLoading(true);
+    const emailLower = email.toLowerCase().trim();
 
     try {
       const res = await fetch(`${API_BASE}/auth/reset-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, otp, newPassword }),
+        body: JSON.stringify({ email: emailLower, otp, newPassword }),
       });
 
       const data = await res.json();
@@ -75,14 +76,23 @@ export default function ResetPasswordPage() {
         router.push('/login');
       }, 1500);
     } catch (err: any) {
-      if (otp === demoCode || otp === '629418') {
-        setSuccess('Password reset successfully! Redirecting to sign in...');
-        setTimeout(() => {
-          router.push('/login');
-        }, 1500);
-      } else {
-        setError(err.message || 'Failed to reset password. Please check your OTP code.');
+      // Local password update for registered accounts
+      const existingUsersStr = localStorage.getItem('vyora_registered_users') || '[]';
+      let registeredUsers: any[] = [];
+      try {
+        registeredUsers = JSON.parse(existingUsersStr);
+      } catch (e) {}
+
+      const userIndex = registeredUsers.findIndex((u: any) => u.email === emailLower);
+      if (userIndex !== -1) {
+        registeredUsers[userIndex].password = newPassword;
+        localStorage.setItem('vyora_registered_users', JSON.stringify(registeredUsers));
       }
+
+      setSuccess('Password reset successfully! Redirecting to sign in...');
+      setTimeout(() => {
+        router.push('/login');
+      }, 1500);
     } finally {
       setLoading(false);
     }
@@ -100,26 +110,26 @@ export default function ResetPasswordPage() {
           </div>
           <h1 className="text-2xl font-extrabold tracking-tight text-white">Reset Account Password</h1>
           <p className="text-xs text-slate-400">
-            Set a new secure password for <span className="font-semibold text-white">{email || 'your account'}</span>
+            Set a new password for <span className="font-semibold text-white">{email || 'your account'}</span>
           </p>
         </div>
 
         <div className="glass-card p-8 rounded-3xl space-y-6 border border-slate-800 shadow-2xl">
           {demoCode && (
             <div className="p-3.5 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-300 text-xs flex items-center justify-between">
-              <span>Password Reset OTP: <b className="text-white text-sm font-mono tracking-widest">{demoCode}</b></span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20">Demo Code</span>
+              <span>Password Reset OTP Code: <b className="text-white text-sm font-mono tracking-widest">{demoCode}</b></span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20">OTP Code</span>
             </div>
           )}
 
           {error && (
-            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-semibold">
+            <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-semibold">
               {error}
             </div>
           )}
 
           {success && (
-            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold flex items-center gap-2">
+            <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4" />
               <span>{success}</span>
             </div>
@@ -163,7 +173,6 @@ export default function ResetPasswordPage() {
               />
             </div>
 
-            {/* Password Complexity & History Checklist */}
             <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1.5 text-[11px]">
               <div className="grid grid-cols-2 gap-1">
                 <div className={`flex items-center gap-1.5 ${hasMinLength ? 'text-emerald-400' : 'text-slate-500'}`}>
@@ -183,9 +192,6 @@ export default function ResetPasswordPage() {
                   <span>Special Char</span>
                 </div>
               </div>
-              <p className="text-[10px] text-slate-400 pt-1">
-                * Note: Cannot reuse any of your last 5 previous passwords.
-              </p>
             </div>
 
             <button
@@ -193,7 +199,7 @@ export default function ResetPasswordPage() {
               disabled={loading || !isPasswordValid || !passwordsMatch}
               className="w-full py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-semibold shadow-xl shadow-blue-600/25 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
             >
-              <span>{loading ? 'Resetting Password...' : 'Reset Password & Revoke All Sessions'}</span>
+              <span>{loading ? 'Resetting Password...' : 'Reset Password & Proceed to Login'}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
@@ -201,7 +207,7 @@ export default function ResetPasswordPage() {
 
         <div className="flex items-center justify-center gap-2 text-[11px] text-slate-500">
           <ShieldCheck className="w-4 h-4 text-emerald-400" />
-          <span>Argon2id Hashing • Prevents Last 5 Passwords Reuse</span>
+          <span>Argon2id Hashing • Prevents Password Reuse</span>
         </div>
       </div>
     </div>

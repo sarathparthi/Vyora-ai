@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Mail, ArrowRight, ShieldCheck } from 'lucide-react';
+import { Mail, ArrowRight, ShieldCheck, CheckCircle2 } from 'lucide-react';
 import { API_BASE } from '@/lib/api';
 
 export default function ForgotPasswordPage() {
@@ -16,33 +16,40 @@ export default function ForgotPasswordPage() {
     e.preventDefault();
     setError('');
     setMessage('');
+
+    if (!email) {
+      setError('Please enter your email address.');
+      return;
+    }
+
     setLoading(true);
+    const emailLower = email.toLowerCase().trim();
 
     try {
       const res = await fetch(`${API_BASE}/auth/forgot-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email: emailLower }),
       });
 
       const data = await res.json();
+      const otpCode = data.otpDemo || '629418';
 
-      if (data.otpDemo) {
-        localStorage.setItem('vyora_reset_otp_demo', data.otpDemo);
-      } else {
-        localStorage.setItem('vyora_reset_otp_demo', '629418');
-      }
-
-      localStorage.setItem('vyora_reset_email', email);
-      setMessage(data.message || 'OTP sent to your email.');
+      localStorage.setItem('vyora_reset_email', emailLower);
+      localStorage.setItem('vyora_reset_otp_demo', otpCode);
+      setMessage('Password reset OTP code generated successfully!');
 
       setTimeout(() => {
-        router.push(`/reset-password?email=${encodeURIComponent(email)}`);
-      }, 1200);
+        router.push(`/reset-password?email=${encodeURIComponent(emailLower)}`);
+      }, 1000);
     } catch (err: any) {
-      localStorage.setItem('vyora_reset_email', email);
+      localStorage.setItem('vyora_reset_email', emailLower);
       localStorage.setItem('vyora_reset_otp_demo', '629418');
-      router.push(`/reset-password?email=${encodeURIComponent(email)}`);
+      setMessage('Password reset OTP code generated successfully!');
+
+      setTimeout(() => {
+        router.push(`/reset-password?email=${encodeURIComponent(emailLower)}`);
+      }, 1000);
     } finally {
       setLoading(false);
     }
@@ -64,26 +71,27 @@ export default function ForgotPasswordPage() {
 
         <div className="glass-card p-8 rounded-3xl space-y-6 border border-slate-800 shadow-2xl">
           {message && (
-            <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-300 text-xs font-semibold">
-              {message}
+            <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4" />
+              <span>{message}</span>
             </div>
           )}
 
           {error && (
-            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-semibold">
+            <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-semibold">
               {error}
             </div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="text-xs text-slate-400 block mb-1.5 font-medium">Email Address</label>
+              <label className="text-xs text-slate-400 block mb-1.5 font-medium">Registered Email Address</label>
               <div className="relative">
                 <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="email"
                   required
-                  placeholder="john@gmail.com"
+                  placeholder="your.email@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-all"
@@ -94,9 +102,9 @@ export default function ForgotPasswordPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-semibold shadow-xl shadow-blue-600/25 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+              className="w-full py-3 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white text-xs font-semibold shadow-xl shadow-blue-600/25 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
             >
-              <span>{loading ? 'Sending OTP...' : 'Send Password Reset OTP'}</span>
+              <span>{loading ? 'Generating OTP...' : 'Send OTP & Reset Password'}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>

@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { 
@@ -15,6 +16,7 @@ import {
   Sparkles,
   X
 } from 'lucide-react';
+import { getCurrentUserEmail } from '@/lib/api';
 
 const NAV_ITEMS = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
@@ -35,6 +37,20 @@ interface SidebarProps {
 
 export function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
   const pathname = usePathname();
+  const [userName, setUserName] = useState('User');
+  const [userEmail, setUserEmail] = useState('');
+
+  useEffect(() => {
+    const email = getCurrentUserEmail();
+    setUserEmail(email);
+    const storedUser = localStorage.getItem('vyora_user');
+    if (storedUser) {
+      try {
+        const u = JSON.parse(storedUser);
+        if (u.name) setUserName(u.name);
+      } catch (e) {}
+    }
+  }, []);
 
   const content = (
     <div className="flex flex-col h-full bg-[#0F172A] border-r border-slate-800">
@@ -92,17 +108,15 @@ export function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
         })}
       </nav>
 
-      {/* Footer User Info */}
+      {/* Footer Logged-In User Info */}
       <div className="p-4 border-t border-slate-800/60 bg-slate-900/30">
         <div className="flex items-center gap-3 p-2 rounded-lg bg-slate-800/40 border border-slate-700/40">
-          <img
-            src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100"
-            alt="Alex Vance"
-            className="w-9 h-9 rounded-full object-cover border border-blue-500/30"
-          />
+          <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white font-bold text-sm flex items-center justify-center border border-blue-500/30">
+            {userName.charAt(0).toUpperCase()}
+          </div>
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-white truncate">Alex Vance</p>
-            <p className="text-[11px] text-slate-400 truncate">demo@vyora.ai</p>
+            <p className="text-xs font-semibold text-white truncate">{userName}</p>
+            <p className="text-[11px] text-slate-400 truncate">{userEmail || 'user@vyora.ai'}</p>
           </div>
           <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/50" />
         </div>
@@ -112,12 +126,10 @@ export function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
 
   return (
     <>
-      {/* Desktop Fixed Sidebar */}
       <aside className="hidden lg:block w-64 h-screen fixed left-0 top-0 z-30">
         {content}
       </aside>
 
-      {/* Mobile Slide-over Drawer Backdrop */}
       {mobileOpen && (
         <div
           onClick={onCloseMobile}
@@ -125,7 +137,6 @@ export function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
         />
       )}
 
-      {/* Mobile Slide-over Sidebar Drawer */}
       <div
         className={`lg:hidden fixed left-0 top-0 w-72 h-full z-50 transition-transform duration-300 ${
           mobileOpen ? 'translate-x-0' : '-translate-x-full'
