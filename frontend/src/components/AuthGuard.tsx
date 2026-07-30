@@ -5,25 +5,29 @@ import { usePathname, useRouter } from 'next/navigation';
 import { Sidebar } from './Sidebar';
 import { Navbar } from './Navbar';
 
+const PUBLIC_AUTH_ROUTES = ['/login', '/register', '/verify-email', '/forgot-password', '/reset-password'];
+
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  const isPublicAuthRoute = PUBLIC_AUTH_ROUTES.includes(pathname);
+
   useEffect(() => {
     const token = localStorage.getItem('vyora_token');
-    const isLoginPage = pathname === '/login';
 
-    if (!token && !isLoginPage) {
+    if (!token && !isPublicAuthRoute) {
       setIsAuthenticated(false);
       router.push('/login');
     } else {
       setIsAuthenticated(true);
     }
-  }, [pathname, router]);
+  }, [pathname, router, isPublicAuthRoute]);
 
-  if (pathname === '/login') {
+  // Render public auth pages full-screen without Sidebar / Navbar
+  if (isPublicAuthRoute) {
     return <>{children}</>;
   }
 

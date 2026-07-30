@@ -210,13 +210,12 @@ export default function LoginPage() {
               <div className="flex justify-between items-center mb-1.5">
                 <label className="text-xs text-slate-400 font-medium">Password</label>
                 {!isRegister && (
-                  <button
-                    type="button"
-                    onClick={() => router.push('/forgot-password')}
+                  <Link
+                    href="/forgot-password"
                     className="text-[11px] text-blue-400 hover:text-blue-300 hover:underline font-medium"
                   >
                     Forgot Password?
-                  </button>
+                  </Link>
                 )}
               </div>
               <div className="relative">
