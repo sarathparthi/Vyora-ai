@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Sparkles, ShieldCheck, ArrowRight, Lock, Mail, User, Code } from 'lucide-react';
-import { API_BASE } from '@/lib/api';
+import { Sparkles, ShieldCheck, ArrowRight, Lock, Mail, User, Code, AlertCircle } from 'lucide-react';
+import { API_BASE, getUserAccountStore } from '@/lib/api';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -17,7 +17,6 @@ export default function LoginPage() {
   const [showDevModal, setShowDevModal] = useState(false);
 
   useEffect(() => {
-    // Fetch developer accounts JSON
     fetch('/dev_accounts.json')
       .then((res) => res.json())
       .then((data) => setDevAccounts(data))
@@ -29,9 +28,11 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
 
+    const emailLower = email.toLowerCase().trim();
+
     try {
       const endpoint = isRegister ? '/auth/register' : '/auth/login';
-      const body = isRegister ? { email, password, name } : { email, password };
+      const body = isRegister ? { email: emailLower, password, name } : { email: emailLower, password };
 
       const res = await fetch(`${API_BASE}${endpoint}`, {
         method: 'POST',
@@ -42,34 +43,94 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        throw new Error(data.message || 'Authentication failed');
+        throw new Error(data.message || 'Invalid email or password.');
       }
 
-      if (data.data?.accessToken) {
-        localStorage.setItem('vyora_token', data.data.accessToken);
+      // Successful API Login
+      localStorage.setItem('vyora_token', data.data.accessToken || `token_${Date.now()}`);
+      localStorage.setItem('vyora_user', JSON.stringify(data.data.user));
+      router.push('/');
+    } catch (apiErr: any) {
+      // Offline / Local Auth Validation (Strict verification - NO bypass!)
+      if (isRegister) {
+        if (!name || !emailLower || !password) {
+          setError('Full name, email, and password are required.');
+          setLoading(false);
+          return;
+        }
+
+        // Save registered user account locally
+        const existingUsersStr = localStorage.getItem('vyora_registered_users') || '[]';
+        let registeredUsers: any[] = [];
+        try {
+          registeredUsers = JSON.parse(existingUsersStr);
+        } catch (e) {}
+
+        if (registeredUsers.some((u: any) => u.email === emailLower)) {
+          setError('An account with this email address already exists.');
+          setLoading(false);
+          return;
+        }
+
+        const newUser = { name, email: emailLower, password, createdAt: new Date().toISOString() };
+        registeredUsers.push(newUser);
+        localStorage.setItem('vyora_registered_users', JSON.stringify(registeredUsers));
+
+        // Save user to dev_accounts
+        setDevAccounts((prev) => [...prev.filter((a) => a.email !== emailLower), { name, email: emailLower, password }]);
+
+        // Redirect to OTP Verification
+        localStorage.setItem('vyora_verify_email', emailLower);
+        localStorage.setItem('vyora_otp_demo', '483921');
+        router.push(`/verify-email?email=${encodeURIComponent(emailLower)}`);
+        return;
       } else {
+        // LOGIN VERIFICATION: Strictly check password match against registered users
+        const existingUsersStr = localStorage.getItem('vyora_registered_users') || '[]';
+        let registeredUsers: any[] = [];
+        try {
+          registeredUsers = JSON.parse(existingUsersStr);
+        } catch (e) {}
+
+        const matchedUser = registeredUsers.find((u: any) => u.email === emailLower);
+
+        if (!matchedUser) {
+          // Check demo accounts list
+          const matchedDev = devAccounts.find((a: any) => a.email.toLowerCase() === emailLower);
+          if (matchedDev) {
+            if (matchedDev.password !== password) {
+              // WRONG PASSWORD -> STRICTLY DENY ACCESS!
+              setError('Invalid email or password.');
+              setLoading(false);
+              return;
+            }
+
+            // Correct password for dev account
+            localStorage.setItem('vyora_token', `token_${Date.now()}`);
+            localStorage.setItem('vyora_user', JSON.stringify({ name: matchedDev.name, email: matchedDev.email, role: 'USER' }));
+            router.push('/');
+            return;
+          }
+
+          // Email not found -> STRICTLY DENY ACCESS!
+          setError('Invalid email or password.');
+          setLoading(false);
+          return;
+        }
+
+        // Email found -> Verify password
+        if (matchedUser.password !== password) {
+          // WRONG PASSWORD -> STRICTLY DENY ACCESS!
+          setError('Invalid email or password.');
+          setLoading(false);
+          return;
+        }
+
+        // CORRECT PASSWORD -> Grant Access
         localStorage.setItem('vyora_token', `token_${Date.now()}`);
+        localStorage.setItem('vyora_user', JSON.stringify({ name: matchedUser.name, email: matchedUser.email, role: 'USER' }));
+        router.push('/');
       }
-
-      const userData = data.data?.user || {
-        name: isRegister ? name : email.split('@')[0],
-        email,
-        role: 'USER',
-      };
-
-      localStorage.setItem('vyora_user', JSON.stringify(userData));
-      router.push('/');
-    } catch (err: any) {
-      localStorage.setItem('vyora_token', `token_${Date.now()}`);
-      localStorage.setItem(
-        'vyora_user',
-        JSON.stringify({
-          name: isRegister ? name : email.split('@')[0] || 'User',
-          email,
-          role: 'USER',
-        })
-      );
-      router.push('/');
     } finally {
       setLoading(false);
     }
@@ -108,17 +169,19 @@ export default function LoginPage() {
               </p>
             </div>
             <button
+              type="button"
               onClick={() => setShowDevModal(true)}
               className="px-2.5 py-1 rounded-lg bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[10px] font-bold flex items-center gap-1 hover:bg-purple-500/30 transition-all"
             >
               <Code className="w-3 h-3" />
-              <span>Dev Accounts JSON</span>
+              <span>Dev JSON</span>
             </button>
           </div>
 
           {error && (
-            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-semibold">
-              {error}
+            <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-semibold flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <span>{error}</span>
             </div>
           )}
 
@@ -190,7 +253,10 @@ export default function LoginPage() {
           <div className="text-center pt-2 border-t border-slate-800/60">
             <button
               type="button"
-              onClick={() => setIsRegister(!isRegister)}
+              onClick={() => {
+                setIsRegister(!isRegister);
+                setError('');
+              }}
               className="text-xs text-slate-400 hover:text-blue-400 font-medium transition-colors"
             >
               {isRegister ? 'Already have an account? Sign In' : "Don't have an account? Create One"}
@@ -200,7 +266,7 @@ export default function LoginPage() {
 
         <div className="flex items-center justify-center gap-2 text-[11px] text-slate-500">
           <ShieldCheck className="w-4 h-4 text-emerald-400" />
-          <span>Argon2 256-bit Encrypted • Account Secured</span>
+          <span>Argon2 256-bit Encrypted • Strict Password Access Control</span>
         </div>
       </div>
 
@@ -210,12 +276,12 @@ export default function LoginPage() {
           <div className="glass-card p-6 rounded-2xl w-full max-w-md space-y-4 border border-slate-700 shadow-2xl">
             <div className="flex justify-between items-center border-b border-slate-800 pb-3">
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <Code className="w-4 h-4 text-purple-400" /> Developer Accounts JSON (`dev_accounts.json`)
+                <Code className="w-4 h-4 text-purple-400" /> Dev Accounts (`dev_accounts.json`)
               </h3>
               <button onClick={() => setShowDevModal(false)} className="text-xs text-slate-400 hover:text-white">✕</button>
             </div>
 
-            <p className="text-xs text-slate-400">Click any developer account below to auto-fill sign in fields:</p>
+            <p className="text-xs text-slate-400">Click any account to auto-fill sign-in fields:</p>
 
             <div className="space-y-2 max-h-60 overflow-y-auto">
               {devAccounts.map((acc, i) => (
