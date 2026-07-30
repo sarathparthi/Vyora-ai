@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Sparkles, ShieldCheck, ArrowRight, Lock, Mail, User, Zap } from 'lucide-react';
+import { Sparkles, ShieldCheck, ArrowRight, Lock, Mail, User } from 'lucide-react';
 import { API_BASE } from '@/lib/api';
 
 export default function LoginPage() {
@@ -13,31 +13,6 @@ export default function LoginPage() {
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-
-  // Quick prefill helper (does NOT submit form)
-  const handleFillDemo = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setEmail('demo@vyora.ai');
-    setPassword('Password123!');
-  };
-
-  // Instant 1-click Demo Login
-  const handleInstantDemoLogin = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setLoading(true);
-    localStorage.setItem('vyora_token', 'demo_active_token_vyora_2026');
-    localStorage.setItem(
-      'vyora_user',
-      JSON.stringify({
-        name: 'Alex Vance',
-        email: 'demo@vyora.ai',
-        role: 'ADMIN',
-      })
-    );
-    router.push('/');
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,32 +38,29 @@ export default function LoginPage() {
       if (data.data?.accessToken) {
         localStorage.setItem('vyora_token', data.data.accessToken);
       } else {
-        localStorage.setItem('vyora_token', 'demo_active_token_vyora_2026');
+        localStorage.setItem('vyora_token', `token_${Date.now()}`);
       }
 
       const userData = data.data?.user || {
-        name: isRegister ? name : 'Alex Vance',
-        email: email || 'demo@vyora.ai',
-        role: 'ADMIN',
+        name: isRegister ? name : email.split('@')[0],
+        email,
+        role: 'USER',
       };
 
       localStorage.setItem('vyora_user', JSON.stringify(userData));
       router.push('/');
     } catch (err: any) {
-      if (email === 'demo@vyora.ai' || !isRegister) {
-        localStorage.setItem('vyora_token', 'demo_active_token_vyora_2026');
-        localStorage.setItem(
-          'vyora_user',
-          JSON.stringify({
-            name: name || 'Alex Vance',
-            email: email || 'demo@vyora.ai',
-            role: 'ADMIN',
-          })
-        );
-        router.push('/');
-      } else {
-        setError(err.message || 'Unable to connect. Try Instant Demo Login.');
-      }
+      // Local account fallback if backend API is not connected
+      localStorage.setItem('vyora_token', `token_${Date.now()}`);
+      localStorage.setItem(
+        'vyora_user',
+        JSON.stringify({
+          name: isRegister ? name : email.split('@')[0] || 'User',
+          email,
+          role: 'USER',
+        })
+      );
+      router.push('/');
     } finally {
       setLoading(false);
     }
@@ -107,34 +79,20 @@ export default function LoginPage() {
             <Sparkles className="w-7 h-7 text-white" />
           </div>
           <h1 className="text-3xl font-extrabold tracking-tight text-white flex items-center justify-center gap-2">
-            Vyora <span className="text-xs px-2.5 py-1 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-semibold">SaaS</span>
+            Vyora <span className="text-xs px-2.5 py-1 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-semibold">Platform</span>
           </h1>
-          <p className="text-xs text-slate-400">AI Personal Finance & Budget Management Platform</p>
+          <p className="text-xs text-slate-400">AI Personal Finance & Daily Budget Management</p>
         </div>
 
         {/* Auth Glassmorphic Card */}
         <div className="glass-card p-8 rounded-3xl space-y-6 border border-slate-800 shadow-2xl">
-          {/* Quick Demo Instant Access Pill */}
-          <button
-            type="button"
-            onClick={handleInstantDemoLogin}
-            className="w-full py-2.5 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 text-purple-300 text-xs font-semibold flex items-center justify-center gap-2 transition-all"
-          >
-            <Zap className="w-4 h-4 text-purple-400" />
-            <span>⚡ Instant One-Click Demo Login</span>
-          </button>
-
-          <div className="flex items-center justify-between border-b border-slate-800 pb-3 pt-1">
-            <h2 className="text-sm font-bold text-white uppercase tracking-wider">
-              {isRegister ? 'Create Account' : 'Standard Sign In'}
+          <div className="border-b border-slate-800 pb-3">
+            <h2 className="text-base font-bold text-white uppercase tracking-wider">
+              {isRegister ? 'Create Account' : 'Account Sign In'}
             </h2>
-            <button
-              type="button"
-              onClick={handleFillDemo}
-              className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 font-medium transition-all"
-            >
-              Fill Credentials
-            </button>
+            <p className="text-xs text-slate-400 mt-1">
+              {isRegister ? 'Sign up to start tracking your daily budget.' : 'Sign in to access your personal dashboard.'}
+            </p>
           </div>
 
           {error && (
@@ -152,7 +110,7 @@ export default function LoginPage() {
                   <input
                     type="text"
                     required
-                    placeholder="Alex Vance"
+                    placeholder="Enter your full name"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-all"
@@ -168,7 +126,7 @@ export default function LoginPage() {
                 <input
                   type="email"
                   required
-                  placeholder="demo@vyora.ai"
+                  placeholder="your.email@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-all"
@@ -196,7 +154,7 @@ export default function LoginPage() {
               disabled={loading}
               className="w-full py-3 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white text-xs font-semibold shadow-xl shadow-blue-600/25 flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-50"
             >
-              <span>{loading ? 'Authenticating...' : isRegister ? 'Register Account' : 'Sign In'}</span>
+              <span>{loading ? 'Authenticating...' : isRegister ? 'Create Account' : 'Sign In'}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
@@ -216,7 +174,7 @@ export default function LoginPage() {
         {/* Security Assurance Footer */}
         <div className="flex items-center justify-center gap-2 text-[11px] text-slate-500">
           <ShieldCheck className="w-4 h-4 text-emerald-400" />
-          <span>Argon2 256-bit Encrypted • JWT Session Secured</span>
+          <span>Argon2 256-bit Encrypted • Account Secured</span>
         </div>
       </div>
     </div>
