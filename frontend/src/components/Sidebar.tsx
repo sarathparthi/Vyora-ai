@@ -13,7 +13,7 @@ import {
   FileText, 
   Settings, 
   Sparkles,
-  ShieldAlert
+  X
 } from 'lucide-react';
 
 const NAV_ITEMS = [
@@ -28,14 +28,19 @@ const NAV_ITEMS = [
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
 
-export function Sidebar() {
+interface SidebarProps {
+  mobileOpen?: boolean;
+  onCloseMobile?: () => void;
+}
+
+export function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
   const pathname = usePathname();
 
-  return (
-    <aside className="w-64 h-screen fixed left-0 top-0 bg-[#0F172A]/80 backdrop-blur-xl border-r border-slate-800 flex flex-col z-30">
+  const content = (
+    <div className="flex flex-col h-full bg-[#0F172A] border-r border-slate-800">
       {/* Brand Header */}
-      <div className="p-6 flex items-center justify-between border-b border-slate-800/60">
-        <Link href="/" className="flex items-center gap-3">
+      <div className="p-5 flex items-center justify-between border-b border-slate-800/60">
+        <Link href="/" onClick={onCloseMobile} className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-blue-500/25">
             <Sparkles className="w-5 h-5 text-white" />
           </div>
@@ -46,6 +51,14 @@ export function Sidebar() {
             <p className="text-[10px] text-slate-400 uppercase tracking-widest font-semibold">AI Finance OS</p>
           </div>
         </Link>
+        {onCloseMobile && (
+          <button
+            onClick={onCloseMobile}
+            className="lg:hidden p-2 text-slate-400 hover:text-white rounded-lg bg-slate-900 border border-slate-800"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
       </div>
 
       {/* Navigation Menu */}
@@ -57,6 +70,7 @@ export function Sidebar() {
             <Link
               key={item.name}
               href={item.href}
+              onClick={onCloseMobile}
               className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
                 isActive
                   ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/25'
@@ -93,6 +107,32 @@ export function Sidebar() {
           <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/50" />
         </div>
       </div>
-    </aside>
+    </div>
+  );
+
+  return (
+    <>
+      {/* Desktop Fixed Sidebar */}
+      <aside className="hidden lg:block w-64 h-screen fixed left-0 top-0 z-30">
+        {content}
+      </aside>
+
+      {/* Mobile Slide-over Drawer Backdrop */}
+      {mobileOpen && (
+        <div
+          onClick={onCloseMobile}
+          className="lg:hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-40 transition-opacity"
+        />
+      )}
+
+      {/* Mobile Slide-over Sidebar Drawer */}
+      <div
+        className={`lg:hidden fixed left-0 top-0 w-72 h-full z-50 transition-transform duration-300 ${
+          mobileOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        {content}
+      </div>
+    </>
   );
 }

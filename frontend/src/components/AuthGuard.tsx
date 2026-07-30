@@ -9,6 +9,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem('vyora_token');
@@ -22,12 +23,10 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     }
   }, [pathname, router]);
 
-  // If on login page, render full login layout without sidebar
   if (pathname === '/login') {
     return <>{children}</>;
   }
 
-  // Show spinning loader while checking authentication state
   if (isAuthenticated === null) {
     return (
       <div className="min-h-screen bg-[#0B0F17] flex items-center justify-center">
@@ -38,10 +37,10 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
   return (
     <>
-      <Sidebar />
-      <Navbar />
-      <main className="pl-64 pt-16 min-h-screen transition-all duration-300">
-        <div className="p-8 max-w-7xl mx-auto space-y-8">{children}</div>
+      <Sidebar mobileOpen={mobileMenuOpen} onCloseMobile={() => setMobileMenuOpen(false)} />
+      <Navbar onToggleMobileMenu={() => setMobileMenuOpen(!mobileMenuOpen)} />
+      <main className="pl-0 lg:pl-64 pt-16 min-h-screen transition-all duration-300">
+        <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6 sm:space-y-8">{children}</div>
       </main>
     </>
   );
