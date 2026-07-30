@@ -1,78 +1,245 @@
-import argon2 from 'argon2';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../config/db';
 import { ENV } from '../config/env';
+import { SecurityService } from './securityService';
+
+export interface RegisterDTO {
+  email: string;
+  password: string;
+  name: string;
+}
+
+export interface LoginDTO {
+  email: string;
+  password: string;
+  rememberMe?: boolean;
+  ipAddress?: string;
+  userAgent?: string;
+}
 
 export class AuthService {
-  static async registerUser(data: { email: string; password: string; name: string; role?: string }) {
-    const existingUser = await prisma.user.findUnique({ where: { email: data.email } });
-    if (existingUser) {
-      throw new Error('User with this email already exists');
+  /**
+   * Registers a new User account with 12+ char password complexity and 6-digit OTP
+   */
+  static async registerUser(dto: RegisterDTO) {
+    const emailLower = dto.email.toLowerCase().trim();
+
+    // Check duplicate email
+    const existing = await prisma.user.findUnique({ where: { email: emailLower } });
+    if (existing) {
+      throw new Error('An account with this email address already exists.');
     }
 
-    const passwordHash = await argon2.hash(data.password);
+    // Validate password policy
+    const policyCheck = SecurityService.validatePasswordPolicy(dto.password);
+    if (!policyCheck.isValid) {
+      throw new Error(policyCheck.message);
+    }
+
+    const passwordHash = await SecurityService.hashPassword(dto.password);
+
     const user = await prisma.user.create({
       data: {
-        email: data.email,
+        email: emailLower,
         passwordHash,
-        name: data.name,
-        role: data.role || 'USER',
+        name: dto.name,
+        isVerified: false,
       },
     });
 
-    await prisma.wallet.create({
+    // Record initial password in history
+    await SecurityService.recordPasswordHistory(user.id, passwordHash);
+
+    // Generate 6-Digit Email Verification OTP
+    const otp = SecurityService.generateOTP();
+    const otpHash = await SecurityService.hashOTP(otp);
+
+    await prisma.emailOTP.create({
+      data: {
+        email: emailLower,
+        otpHash,
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 mins
+      },
+    });
+
+    // Log security audit event
+    await prisma.securityAuditLog.create({
       data: {
         userId: user.id,
-        name: 'Main Bank Account',
-        type: 'BANK_ACCOUNT',
-        balance: 5000.0,
-        isDefault: true,
-        color: '#3B82F6',
+        event: 'USER_REGISTERED',
+        details: `User registered: ${emailLower}. Verification OTP generated.`,
+        ipAddress: '127.0.0.1',
+        userAgent: 'Registration Form',
       },
     });
 
-    await prisma.wallet.create({
-      data: {
-        userId: user.id,
-        name: 'Cash Wallet',
-        type: 'CASH_WALLET',
-        balance: 450.0,
-        isDefault: false,
-        color: '#10B981',
-      },
-    });
-
-    const tokens = this.generateTokens(user.id, user.email, user.role);
-    return { user: { id: user.id, email: user.email, name: user.name, role: user.role }, ...tokens };
+    return {
+      userId: user.id,
+      email: user.email,
+      name: user.name,
+      message: 'Registration successful! Verification OTP code sent to your email.',
+      otpDemo: otp, // Returned for testing demonstration
+    };
   }
 
-  static async loginUser(email: string, password: string, ipAddress?: string, userAgent?: string) {
-    const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) {
-      throw new Error('Invalid email or password');
+  /**
+   * Verifies 6-Digit Email OTP
+   */
+  static async verifyEmailOTP(email: string, otp: string) {
+    const emailLower = email.toLowerCase().trim();
+    const record = await prisma.emailOTP.findFirst({
+      where: { email: emailLower },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!record) {
+      throw new Error('Invalid or expired verification code.');
     }
 
-    const isMatch = await argon2.verify(user.passwordHash, password);
-    if (!isMatch) {
-      throw new Error('Invalid email or password');
+    if (new Date() > record.expiresAt) {
+      throw new Error('Verification code has expired. Please request a new code.');
     }
 
-    await prisma.userSession.create({
+    if (record.attempts >= 5) {
+      throw new Error('Maximum verification attempts exceeded. Please request a new code.');
+    }
+
+    const isValid = SecurityService.verifyOTPHash(otp, record.otpHash);
+    if (!isValid) {
+      await prisma.emailOTP.update({
+        where: { id: record.id },
+        data: { attempts: { increment: 1 } },
+      });
+      throw new Error('Invalid verification code.');
+    }
+
+    // Mark user verified
+    const user = await prisma.user.update({
+      where: { email: emailLower },
+      data: { isVerified: true },
+    });
+
+    // Delete used OTP
+    await prisma.emailOTP.deleteMany({ where: { email: emailLower } });
+
+    await prisma.securityAuditLog.create({
       data: {
         userId: user.id,
-        ipAddress: ipAddress || '127.0.0.1',
-        userAgent: userAgent || 'Unknown',
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        event: 'OTP_VERIFIED',
+        details: 'Email verification completed successfully.',
+        ipAddress: '127.0.0.1',
+        userAgent: 'Verification Form',
       },
     });
 
-    const tokens = this.generateTokens(user.id, user.email, user.role);
+    return { success: true, message: 'Email address verified successfully!' };
+  }
 
+  /**
+   * Authenticates user with email/password, Argon2id, lockout check, and device session logging
+   */
+  static async loginUser(dto: LoginDTO) {
+    const emailLower = dto.email.toLowerCase().trim();
+    const genericError = 'Invalid email or password.';
+
+    const user = await prisma.user.findUnique({ where: { email: emailLower } });
+    if (!user) {
+      throw new Error(genericError);
+    }
+
+    // Check account lockout
+    if (SecurityService.isAccountLocked(user.lockedUntil)) {
+      const remainingMins = Math.ceil((new Date(user.lockedUntil!).getTime() - Date.now()) / 60000);
+      throw new Error(`Too many failed login attempts. Your account has been temporarily locked. Try again in ${remainingMins} minutes.`);
+    }
+
+    // Verify Password with Argon2id
+    const isMatch = await SecurityService.verifyPassword(user.passwordHash, dto.password);
+    if (!isMatch) {
+      const attempts = user.failedLoginAttempts + 1;
+      let updateData: any = { failedLoginAttempts: attempts };
+
+      if (attempts >= 5) {
+        updateData.lockedUntil = new Date(Date.now() + 15 * 60 * 1000); // 15 mins lock
+        await prisma.securityAuditLog.create({
+          data: {
+            userId: user.id,
+            event: 'ACCOUNT_LOCKED',
+            details: `Account locked for 15 minutes after 5 consecutive failed login attempts.`,
+            ipAddress: dto.ipAddress || '127.0.0.1',
+            userAgent: dto.userAgent || 'Unknown',
+          },
+        });
+      } else {
+        await prisma.securityAuditLog.create({
+          data: {
+            userId: user.id,
+            event: 'FAILED_LOGIN',
+            details: `Failed login attempt ${attempts}/5.`,
+            ipAddress: dto.ipAddress || '127.0.0.1',
+            userAgent: dto.userAgent || 'Unknown',
+          },
+        });
+      }
+
+      await prisma.user.update({
+        where: { id: user.id },
+        data: updateData,
+      });
+
+      if (attempts >= 5) {
+        throw new Error('Too many failed login attempts. Your account has been temporarily locked.');
+      }
+
+      throw new Error(genericError);
+    }
+
+    // Check email verification
+    if (!user.isVerified) {
+      throw new Error('Please verify your email address before signing in.');
+    }
+
+    // Reset failed login count on clean login
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { failedLoginAttempts: 0, lockedUntil: null },
+    });
+
+    // Device session lifetime (30 days if Remember Me, 24 hrs otherwise)
+    const sessionDurationDays = dto.rememberMe ? 30 : 1;
+    const expiresAt = new Date(Date.now() + sessionDurationDays * 24 * 60 * 60 * 1000);
+
+    // Create Device Session
+    const session = await prisma.deviceSession.create({
+      data: {
+        userId: user.id,
+        device: this.parseDeviceType(dto.userAgent),
+        browser: this.parseBrowser(dto.userAgent),
+        os: this.parseOS(dto.userAgent),
+        ipAddress: dto.ipAddress || '127.0.0.1',
+        isCurrent: true,
+        expiresAt,
+      },
+    });
+
+    const tokens = this.generateTokens(user.id, user.email, user.role, session.id);
+
+    // Store Refresh Token
     await prisma.refreshToken.create({
       data: {
         token: tokens.refreshToken,
         userId: user.id,
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      },
+    });
+
+    await prisma.securityAuditLog.create({
+      data: {
+        userId: user.id,
+        event: 'LOGIN_SUCCESS',
+        details: `Successful login from ${session.device} (${session.browser} / ${session.os}).`,
+        ipAddress: dto.ipAddress || '127.0.0.1',
+        userAgent: dto.userAgent || 'Unknown',
       },
     });
 
@@ -83,15 +250,179 @@ export class AuthService {
         name: user.name,
         role: user.role,
         currency: user.currency,
-        avatarUrl: user.avatarUrl,
       },
-      ...tokens,
+      tokens,
+      session,
     };
   }
 
-  static generateTokens(userId: string, email: string, role: string) {
-    const accessToken = jwt.sign({ userId, email, role }, ENV.JWT_SECRET, { expiresIn: '1h' });
-    const refreshToken = jwt.sign({ userId, email, role }, ENV.JWT_REFRESH_SECRET, { expiresIn: '7d' });
+  /**
+   * Requests Password Reset OTP code
+   */
+  static async requestPasswordReset(email: string) {
+    const emailLower = email.toLowerCase().trim();
+    const user = await prisma.user.findUnique({ where: { email: emailLower } });
+
+    // Always respond with success to prevent email enumeration (OWASP)
+    if (!user) {
+      return { message: 'If an account exists for this email, a password reset OTP code has been sent.' };
+    }
+
+    const otp = SecurityService.generateOTP();
+    const otpHash = await SecurityService.hashOTP(otp);
+
+    await prisma.passwordResetOTP.create({
+      data: {
+        email: emailLower,
+        otpHash,
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+      },
+    });
+
+    await prisma.securityAuditLog.create({
+      data: {
+        userId: user.id,
+        event: 'PASSWORD_RESET_REQUESTED',
+        details: `Password reset OTP requested.`,
+        ipAddress: '127.0.0.1',
+        userAgent: 'Forgot Password Form',
+      },
+    });
+
+    return {
+      message: 'If an account exists for this email, a password reset OTP code has been sent.',
+      otpDemo: otp, // For testing demonstration
+    };
+  }
+
+  /**
+   * Resets user password enforcing complexity policy & 5-password history exclusion
+   */
+  static async resetPassword(email: string, otp: string, newPassword: string) {
+    const emailLower = email.toLowerCase().trim();
+    const user = await prisma.user.findUnique({ where: { email: emailLower } });
+    if (!user) throw new Error('Invalid request or expired OTP.');
+
+    const record = await prisma.passwordResetOTP.findFirst({
+      where: { email: emailLower },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!record || new Date() > record.expiresAt) {
+      throw new Error('Invalid or expired password reset OTP.');
+    }
+
+    const isValidOTP = SecurityService.verifyOTPHash(otp, record.otpHash);
+    if (!isValidOTP) {
+      throw new Error('Invalid password reset OTP.');
+    }
+
+    // Validate password policy
+    const policyCheck = SecurityService.validatePasswordPolicy(newPassword);
+    if (!policyCheck.isValid) {
+      throw new Error(policyCheck.message);
+    }
+
+    // Check 5-password history reuse
+    const isReused = await SecurityService.isPasswordReused(user.id, newPassword);
+    if (isReused) {
+      throw new Error('You cannot reuse any of your previous 5 passwords. Please choose a new password.');
+    }
+
+    const passwordHash = await SecurityService.hashPassword(newPassword);
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash, failedLoginAttempts: 0, lockedUntil: null },
+    });
+
+    // Record new password in history
+    await SecurityService.recordPasswordHistory(user.id, passwordHash);
+
+    // Invalidate previous sessions & refresh tokens
+    await prisma.refreshToken.deleteMany({ where: { userId: user.id } });
+    await prisma.deviceSession.deleteMany({ where: { userId: user.id } });
+    await prisma.passwordResetOTP.deleteMany({ where: { email: emailLower } });
+
+    await prisma.securityAuditLog.create({
+      data: {
+        userId: user.id,
+        event: 'PASSWORD_RESET_SUCCESS',
+        details: 'Password reset completed. All active sessions invalidated.',
+        ipAddress: '127.0.0.1',
+        userAgent: 'Reset Password Form',
+      },
+    });
+
+    return { success: true, message: 'Password reset successfully! Please sign in with your new password.' };
+  }
+
+  /**
+   * Returns active device sessions for a user
+   */
+  static async getActiveSessions(userId: string) {
+    return await prisma.deviceSession.findMany({
+      where: { userId, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  /**
+   * Revokes a specific device session
+   */
+  static async revokeSession(userId: string, sessionId: string) {
+    await prisma.deviceSession.deleteMany({ where: { id: sessionId, userId } });
+    await prisma.securityAuditLog.create({
+      data: {
+        userId,
+        event: 'SESSION_REVOKED',
+        details: `Device session ${sessionId} revoked.`,
+        ipAddress: '127.0.0.1',
+        userAgent: 'Security Settings',
+      },
+    });
+    return { success: true };
+  }
+
+  /**
+   * Revokes all sessions EXCEPT current
+   */
+  static async revokeOtherSessions(userId: string, currentSessionId: string) {
+    await prisma.deviceSession.deleteMany({
+      where: { userId, id: { not: currentSessionId } },
+    });
+    return { success: true };
+  }
+
+  static generateTokens(userId: string, email: string, role: string, sessionId: string) {
+    const accessToken = jwt.sign({ userId, email, role, sessionId }, ENV.JWT_SECRET, { expiresIn: '15m' });
+    const refreshToken = jwt.sign({ userId, email, role, sessionId }, ENV.JWT_REFRESH_SECRET, { expiresIn: '30d' });
     return { accessToken, refreshToken };
+  }
+
+  private static parseDeviceType(ua?: string): string {
+    if (!ua) return 'Desktop';
+    if (/mobile/i.test(ua)) return 'Mobile';
+    if (/tablet|ipad/i.test(ua)) return 'Tablet';
+    return 'Desktop';
+  }
+
+  private static parseBrowser(ua?: string): string {
+    if (!ua) return 'Chrome';
+    if (/chrome/i.test(ua)) return 'Chrome';
+    if (/safari/i.test(ua)) return 'Safari';
+    if (/firefox/i.test(ua)) return 'Firefox';
+    if (/edge/i.test(ua)) return 'Edge';
+    return 'Browser';
+  }
+
+  private static parseOS(ua?: string): string {
+    if (!ua) return 'Windows';
+    if (/windows/i.test(ua)) return 'Windows';
+    if (/mac/i.test(ua)) return 'macOS';
+    if (/android/i.test(ua)) return 'Android';
+    if (/iphone|ipad/i.test(ua)) return 'iOS';
+    if (/linux/i.test(ua)) return 'Linux';
+    return 'OS';
   }
 }

@@ -28,17 +28,23 @@ setupSwagger(app);
 
 // Public Routes
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'HEALTHY', timestamp: new Date().toISOString(), service: 'Vyora API Engine' });
+  res.json({ status: 'HEALTHY', timestamp: new Date().toISOString(), service: 'Vyora Enterprise API Engine' });
 });
 
+// Authentication Endpoints
 app.post('/api/auth/register', authRateLimiter, AuthController.register);
+app.post('/api/auth/verify-otp', authRateLimiter, AuthController.verifyOTP);
 app.post('/api/auth/login', authRateLimiter, AuthController.login);
+app.post('/api/auth/forgot-password', authRateLimiter, AuthController.requestPasswordReset);
+app.post('/api/auth/reset-password', authRateLimiter, AuthController.resetPassword);
 
 // Protected Routes (Require JWT)
 app.use('/api', authenticateJWT);
 
-// User Profile
+// User Profile & Active Sessions
 app.get('/api/auth/me', AuthController.getProfile);
+app.get('/api/auth/sessions', AuthController.getActiveSessions);
+app.delete('/api/auth/sessions/:id', AuthController.revokeSession);
 
 // Transactions & Categories
 app.get('/api/transactions', TransactionController.list);
@@ -67,7 +73,7 @@ async function startServer() {
   await connectDB();
   const PORT = Number(ENV.PORT);
   app.listen(PORT, () => {
-    console.log(`🚀 Vyora Backend Server running on http://localhost:${PORT}`);
+    console.log(`🚀 Vyora Enterprise Backend Server running on http://localhost:${PORT}`);
   });
 }
 

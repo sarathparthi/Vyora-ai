@@ -9,39 +9,52 @@ datasource db {
 }
 
 model User {
-  id               String          @id @default(uuid())
-  email            String          @unique
-  passwordHash     String
-  name             String
-  role             String          @default("USER") // ADMIN, MANAGER, USER, GUEST
-  avatarUrl        String?
-  currency         String          @default("USD")
-  twoFactorEnabled Boolean         @default(false)
-  isVerified       Boolean         @default(true)
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
+  id                  String              @id @default(uuid())
+  email               String              @unique
+  passwordHash        String
+  name                String
+  role                String              @default("USER") // SUPER_ADMIN, ADMIN, MANAGER, USER, GUEST
+  isVerified          Boolean             @default(false)
+  failedLoginAttempts Int                 @default(0)
+  lockedUntil         DateTime?
+  twoFactorEnabled    Boolean             @default(false)
+  avatarUrl           String?
+  currency            String              @default("INR")
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
 
-  wallets          Wallet[]
-  transactions     Transaction[]
-  budgets          Budget[]
-  savingsGoals     SavingsGoal[]
-  notifications    Notification[]
-  aiPredictions    AIPrediction[]
-  aiInsights       AIInsight[]
-  sessions         UserSession[]
-  refreshTokens    RefreshToken[]
-  auditLogs        AuditLog[]
-  categories       Category[]
+  wallets             Wallet[]
+  transactions        Transaction[]
+  budgets             Budget[]
+  savingsGoals        SavingsGoal[]
+  notifications       Notification[]
+  aiPredictions       AIPrediction[]
+  aiInsights          AIInsight[]
+  sessions            DeviceSession[]
+  refreshTokens       RefreshToken[]
+  passwordHistory     PasswordHistory[]
+  auditLogs           SecurityAuditLog[]
 
   @@index([email])
 }
 
-model UserSession {
+model PasswordHistory {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  passwordHash String
+  createdAt    DateTime @default(now())
+}
+
+model DeviceSession {
   id        String   @id @default(uuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  ipAddress String?
-  userAgent String?
+  device    String   @default("Desktop") // Desktop, Mobile, Tablet
+  browser   String   @default("Chrome")
+  os        String   @default("Windows")
+  ipAddress String   @default("127.0.0.1")
+  isCurrent Boolean  @default(true)
   expiresAt DateTime
   createdAt DateTime @default(now())
 }
@@ -56,82 +69,112 @@ model RefreshToken {
   createdAt DateTime @default(now())
 }
 
-model Wallet {
-  id           String        @id @default(uuid())
-  userId       String
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name         String
-  type         String        @default("BANK_ACCOUNT") // BANK_ACCOUNT, CASH_WALLET, CREDIT_CARD, INVESTMENT, CRYPTO
-  balance      Float         @default(0.0)
-  currency     String        @default("USD")
-  accountNumber String?
-  isDefault    Boolean       @default(false)
-  color        String        @default("#3B82F6")
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+model EmailOTP {
+  id        String   @id @default(uuid())
+  email     String
+  otpHash   String
+  attempts  Int      @default(0)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
 
-  transactions Transaction[]
+  @@index([email])
+}
+
+model PasswordResetOTP {
+  id        String   @id @default(uuid())
+  email     String
+  otpHash   String
+  attempts  Int      @default(0)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([email])
+}
+
+model SecurityAuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  event     String   // LOGIN, FAILED_LOGIN, ACCOUNT_LOCKED, PASSWORD_RESET, SESSION_REVOKED, etc.
+  details   String
+  ipAddress String   @default("127.0.0.1")
+  userAgent String   @default("Unknown")
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Wallet {
+  id            String        @id @default(uuid())
+  userId        String
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name          String
+  type          String        @default("BANK_ACCOUNT")
+  balance       Float         @default(0.0)
+  currency      String        @default("INR")
+  accountNumber String?
+  isDefault     Boolean       @default(false)
+  color         String        @default("#3B82F6")
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  transactions  Transaction[]
 
   @@index([userId])
 }
 
 model Category {
-  id          String          @id @default(uuid())
-  userId      String?         // null = System Default Category, string = Custom Category
-  user        User?           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id          String        @id @default(uuid())
+  userId      String?
   name        String
-  type        String          @default("EXPENSE") // INCOME, EXPENSE, TRANSFER
-  icon        String          @default("Tag")
-  color       String          @default("#6B7280")
-  isSystem    Boolean         @default(false)
-  createdAt   DateTime        @default(now())
+  type        String        @default("EXPENSE")
+  icon        String        @default("Tag")
+  color       String        @default("#6B7280")
+  isSystem    Boolean       @default(false)
+  createdAt   DateTime      @default(now())
 
   transactions Transaction[]
   budgets      BudgetCategory[]
-
-  @@index([userId, type])
 }
 
 model Transaction {
-  id             String             @id @default(uuid())
+  id             String        @id @default(uuid())
   userId         String
-  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   walletId       String
-  wallet         Wallet             @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  wallet         Wallet        @relation(fields: [walletId], references: [id], onDelete: Cascade)
   categoryId     String
-  category       Category           @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  category       Category      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   amount         Float
-  type           String             // INCOME, EXPENSE, TRANSFER
+  type           String
   description    String
-  date           DateTime           @default(now())
-  paymentMethod  String             @default("Card")
+  date           DateTime      @default(now())
+  paymentMethod  String        @default("Card")
   location       String?
   receiptUrl     String?
-  tags           String?            // Comma separated tags e.g., "groceries,weekly"
-  isRecurring    Boolean            @default(false)
-  recurringFreq  String             @default("NONE") // NONE, DAILY, WEEKLY, MONTHLY, YEARLY
+  tags           String?
+  isRecurring    Boolean       @default(false)
+  recurringFreq  String        @default("NONE")
   notes          String?
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
   @@index([userId, date])
-  @@index([categoryId])
-  @@index([walletId])
 }
 
 model Budget {
-  id          String           @id @default(uuid())
-  userId      String
-  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  title       String           @default("Monthly Budget")
-  totalCap    Float
-  month       Int
-  year        Int
-  alertPercent Int             @default(80)
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  id           String           @id @default(uuid())
+  userId       String
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title        String           @default("Monthly Budget")
+  totalCap     Float
+  month        Int
+  year         Int
+  alertPercent Int              @default(80)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
 
-  categories  BudgetCategory[]
+  categories   BudgetCategory[]
 
   @@unique([userId, month, year])
 }
@@ -177,17 +220,17 @@ model Notification {
 }
 
 model AIPrediction {
-  id                String   @id @default(uuid())
-  userId            String
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  targetMonth       Int
-  targetYear        Int
-  predictedExpense  Float
-  predictedIncome   Float
-  predictedSavings  Float
-  confidenceScore   Float    @default(0.92)
-  insights          String   // JSON string of findings
-  createdAt         DateTime @default(now())
+  id               String   @id @default(uuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  targetMonth      Int
+  targetYear       Int
+  predictedExpense Float
+  predictedIncome  Float
+  predictedSavings Float
+  confidenceScore  Float    @default(0.92)
+  insights         String
+  createdAt        DateTime @default(now())
 
   @@index([userId, targetMonth, targetYear])
 }
@@ -196,25 +239,12 @@ model AIInsight {
   id         String   @id @default(uuid())
   userId     String
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type       String   // ANOMALY, SAVINGS_TIP, OVERSPENDING_WARNING, INVESTMENT_ALLOCATION
+  type       String
   title      String
   summary    String
   impact     String   @default("MEDIUM")
   actionable String
   createdAt  DateTime @default(now())
-
-  @@index([userId])
-}
-
-model AuditLog {
-  id        String   @id @default(uuid())
-  userId    String?
-  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
-  action    String
-  details   String
-  ipAddress String?
-  userAgent String?
-  createdAt DateTime @default(now())
 
   @@index([userId])
 }
