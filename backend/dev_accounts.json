@@ -1,0 +1,14 @@
+[
+  {
+    "name": "Alex Vance",
+    "email": "demo@vyora.ai",
+    "password": "Vyora@2026!Secure",
+    "registeredAt": "2026-07-30T10:00:00.000Z"
+  },
+  {
+    "name": "Developer Master",
+    "email": "dev@vyora.ai",
+    "password": "Vyora@2026!Master",
+    "registeredAt": "2026-07-30T10:05:00.000Z"
+  }
+]
