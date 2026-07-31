@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Sparkles, ShieldCheck, ArrowRight, Lock, Mail, User, Check, X } from 'lucide-react';
+import { Sparkles, ShieldCheck, ArrowRight, Lock, Mail, User, Check, X, CheckCircle2 } from 'lucide-react';
 import { API_BASE } from '@/lib/api';
 
 export default function RegisterPage() {
@@ -12,6 +12,7 @@ export default function RegisterPage() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
 
   const hasMinLength = password.length >= 12;
@@ -26,9 +27,10 @@ export default function RegisterPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setSuccess('');
 
     if (!isPasswordValid) {
-      setError('Please satisfy all password complexity policy rules before registering.');
+      setError('Please satisfy all password complexity rules before registering.');
       return;
     }
 
@@ -53,7 +55,7 @@ export default function RegisterPage() {
         throw new Error(data.message || 'Registration failed.');
       }
 
-      // Save user to registered users local store
+      // Save user account directly as verified
       const existingUsersStr = localStorage.getItem('vyora_registered_users') || '[]';
       let registeredUsers: any[] = [];
       try {
@@ -65,10 +67,12 @@ export default function RegisterPage() {
         localStorage.setItem('vyora_registered_users', JSON.stringify(registeredUsers));
       }
 
-      localStorage.setItem('vyora_verify_email', emailLower);
-      router.push(`/verify-email?email=${encodeURIComponent(emailLower)}`);
+      setSuccess('Account created successfully! Redirecting to sign in...');
+      setTimeout(() => {
+        router.push('/login');
+      }, 1200);
     } catch (err: any) {
-      // Local fallback registration
+      // Local account creation fallback (instant verification - NO OTP required)
       const existingUsersStr = localStorage.getItem('vyora_registered_users') || '[]';
       let registeredUsers: any[] = [];
       try {
@@ -84,8 +88,10 @@ export default function RegisterPage() {
       registeredUsers.push({ name, email: emailLower, password, isVerified: true, createdAt: new Date().toISOString() });
       localStorage.setItem('vyora_registered_users', JSON.stringify(registeredUsers));
 
-      localStorage.setItem('vyora_verify_email', emailLower);
-      router.push(`/verify-email?email=${encodeURIComponent(emailLower)}`);
+      setSuccess('Account created successfully! Redirecting to sign in...');
+      setTimeout(() => {
+        router.push('/login');
+      }, 1200);
     } finally {
       setLoading(false);
     }
@@ -109,13 +115,20 @@ export default function RegisterPage() {
 
         <div className="glass-card p-8 rounded-3xl space-y-6 border border-slate-800 shadow-2xl">
           <div className="border-b border-slate-800 pb-3">
-            <h2 className="text-base font-bold text-white uppercase tracking-wider">Create Master Account</h2>
-            <p className="text-xs text-slate-400 mt-1">Each email address represents one permanent primary account identity.</p>
+            <h2 className="text-base font-bold text-white uppercase tracking-wider">Create Account</h2>
+            <p className="text-xs text-slate-400 mt-1">Instant registration — start managing your budget immediately.</p>
           </div>
 
           {error && (
             <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-semibold">
               {error}
+            </div>
+          )}
+
+          {success && (
+            <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4" />
+              <span>{success}</span>
             </div>
           )}
 
@@ -136,7 +149,7 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label className="text-xs text-slate-400 block mb-1.5 font-medium">Email Address (Permanent Master Identity)</label>
+              <label className="text-xs text-slate-400 block mb-1.5 font-medium">Email Address</label>
               <div className="relative">
                 <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
@@ -181,7 +194,7 @@ export default function RegisterPage() {
             </div>
 
             <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1.5 text-[11px]">
-              <p className="font-semibold text-slate-300 mb-1">Enterprise Password Complexity Rules:</p>
+              <p className="font-semibold text-slate-300 mb-1">Password Complexity Rules:</p>
               <div className="grid grid-cols-2 gap-1">
                 <div className={`flex items-center gap-1.5 ${hasMinLength ? 'text-emerald-400' : 'text-slate-500'}`}>
                   {hasMinLength ? <Check className="w-3.5 h-3.5" /> : <X className="w-3.5 h-3.5" />}
@@ -215,7 +228,7 @@ export default function RegisterPage() {
               disabled={loading || !isPasswordValid || !passwordsMatch}
               className="w-full py-3 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white text-xs font-semibold shadow-xl shadow-blue-600/25 flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-50"
             >
-              <span>{loading ? 'Creating Account...' : 'Continue to Email Verification'}</span>
+              <span>{loading ? 'Creating Account...' : 'Complete Sign Up'}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
@@ -229,7 +242,7 @@ export default function RegisterPage() {
 
         <div className="flex items-center justify-center gap-2 text-[11px] text-slate-500">
           <ShieldCheck className="w-4 h-4 text-emerald-400" />
-          <span>Argon2id Encrypted • Password Reuse History Protection</span>
+          <span>Argon2id Encrypted • Strict Password Protection</span>
         </div>
       </div>
     </div>
