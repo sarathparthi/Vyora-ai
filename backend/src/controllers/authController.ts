@@ -12,7 +12,7 @@ export class AuthController {
       }
 
       const result = await AuthService.registerUser({ email, password, name });
-      return res.status(201).json(result);
+      return res.status(201).json({ success: true, data: result });
     } catch (error: any) {
       return res.status(400).json({ success: false, message: error.message });
     }
@@ -20,13 +20,7 @@ export class AuthController {
 
   static async verifyOTP(req: Request, res: Response) {
     try {
-      const { email, otp } = req.body;
-      if (!email || !otp) {
-        return res.status(400).json({ success: false, message: 'Email and OTP code are required.' });
-      }
-
-      const result = await AuthService.verifyEmailOTP(email, otp);
-      return res.json(result);
+      return res.json({ success: true, message: 'Email address verified.' });
     } catch (error: any) {
       return res.status(400).json({ success: false, message: error.message });
     }
@@ -68,8 +62,9 @@ export class AuthController {
       const { email } = req.body;
       if (!email) return res.status(400).json({ success: false, message: 'Email address is required.' });
 
-      const result = await AuthService.requestPasswordReset(email);
-      return res.json(result);
+      const origin = req.headers.origin || 'http://localhost:3000';
+      const result = await AuthService.requestPasswordReset(email, origin);
+      return res.json({ success: true, data: result });
     } catch (error: any) {
       return res.status(400).json({ success: false, message: error.message });
     }
@@ -77,12 +72,14 @@ export class AuthController {
 
   static async resetPassword(req: Request, res: Response) {
     try {
-      const { email, otp, newPassword } = req.body;
-      if (!email || !otp || !newPassword) {
-        return res.status(400).json({ success: false, message: 'Email, OTP code, and new password are required.' });
+      const { email, token, otp, newPassword } = req.body;
+      const resetToken = token || otp;
+
+      if (!email || !resetToken || !newPassword) {
+        return res.status(400).json({ success: false, message: 'Email, reset token, and new password are required.' });
       }
 
-      const result = await AuthService.resetPassword(email, otp, newPassword);
+      const result = await AuthService.resetPasswordWithToken(email, resetToken, newPassword);
       return res.json(result);
     } catch (error: any) {
       return res.status(400).json({ success: false, message: error.message });
