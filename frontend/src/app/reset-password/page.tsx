@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Lock, ArrowRight, ShieldCheck, CheckCircle2, Check, X, KeyRound } from 'lucide-react';
+import { Lock, ArrowRight, ShieldCheck, CheckCircle2, Check, X, ShieldAlert } from 'lucide-react';
 import { API_BASE } from '@/lib/api';
 
 function ResetPasswordForm() {
@@ -20,10 +20,8 @@ function ResetPasswordForm() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const savedEmail = emailParam || localStorage.getItem('vyora_reset_email') || '';
-    const savedToken = tokenParam || localStorage.getItem('vyora_reset_token') || '';
-    setEmail(savedEmail);
-    setToken(savedToken);
+    setEmail(emailParam);
+    setToken(tokenParam);
   }, [emailParam, tokenParam]);
 
   const hasMinLength = newPassword.length >= 12;
@@ -34,6 +32,31 @@ function ResetPasswordForm() {
   const passwordsMatch = newPassword.length > 0 && newPassword === confirmPassword;
 
   const isPasswordValid = hasMinLength && hasUppercase && hasLowercase && hasNumber && hasSpecial;
+
+  // Strict Token Validation Guard
+  if (!tokenParam || !emailParam) {
+    return (
+      <div className="w-full max-w-md space-y-6 relative z-10 my-8 text-center">
+        <div className="glass-card p-8 rounded-3xl space-y-4 border border-rose-500/30 shadow-2xl">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-400">
+            <ShieldAlert className="w-7 h-7" />
+          </div>
+          <h2 className="text-xl font-bold text-white">Access Denied</h2>
+          <p className="text-xs text-slate-400 leading-relaxed">
+            Invalid or missing password reset link. For your security, password resets must be initiated from the link sent to your registered email inbox.
+          </p>
+          <div className="pt-2">
+            <a
+              href="/forgot-password"
+              className="inline-block px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold transition-all"
+            >
+              Request Password Reset Link
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const handleReset = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,31 +86,15 @@ function ResetPasswordForm() {
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        throw new Error(data.message || 'Password reset failed.');
+        throw new Error(data.message || 'Password reset failed. Invalid or expired token.');
       }
 
-      setSuccess('Password reset successfully via Magic Token! Redirecting to sign in...');
+      setSuccess('Password reset successfully! Redirecting to sign in...');
       setTimeout(() => {
         router.push('/login');
       }, 1500);
     } catch (err: any) {
-      // Local fallback reset execution
-      const existingUsersStr = localStorage.getItem('vyora_registered_users') || '[]';
-      let registeredUsers: any[] = [];
-      try {
-        registeredUsers = JSON.parse(existingUsersStr);
-      } catch (e) {}
-
-      const userIndex = registeredUsers.findIndex((u: any) => u.email === emailLower);
-      if (userIndex !== -1) {
-        registeredUsers[userIndex].password = newPassword;
-        localStorage.setItem('vyora_registered_users', JSON.stringify(registeredUsers));
-      }
-
-      setSuccess('Password reset successfully via Magic Token! Redirecting to sign in...');
-      setTimeout(() => {
-        router.push('/login');
-      }, 1500);
+      setError(err.message || 'Failed to reset password. Please check your reset link.');
     } finally {
       setLoading(false);
     }
@@ -97,18 +104,17 @@ function ResetPasswordForm() {
     <div className="w-full max-w-md space-y-6 relative z-10 my-8">
       <div className="text-center space-y-2">
         <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-400 mb-2">
-          <KeyRound className="w-7 h-7" />
+          <Lock className="w-7 h-7" />
         </div>
         <h1 className="text-2xl font-extrabold tracking-tight text-white">Cryptographic Reset Verified</h1>
         <p className="text-xs text-slate-400">
-          Set a new password for <span className="font-semibold text-white">{email || 'your account'}</span>
+          Set a new password for <span className="font-semibold text-white">{email}</span>
         </p>
       </div>
 
       <div className="glass-card p-8 rounded-3xl space-y-6 border border-slate-800 shadow-2xl">
         <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold flex items-center justify-between">
-          <span className="flex items-center gap-1.5"><ShieldCheck className="w-4 h-4" /> Token Verified</span>
-          <span className="font-mono text-[10px] text-emerald-300">Method 1 Token Active</span>
+          <span className="flex items-center gap-1.5"><ShieldCheck className="w-4 h-4" /> 256-Bit Cryptographic Token Active</span>
         </div>
 
         {error && (

@@ -1,23 +1,19 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { Lock, Mail, ArrowRight, ShieldCheck, CheckCircle2, ExternalLink } from 'lucide-react';
+import { Lock, Mail, ArrowRight, ShieldCheck, CheckCircle2 } from 'lucide-react';
 import { API_BASE } from '@/lib/api';
 
 export default function ForgotPasswordPage() {
-  const router = useRouter();
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
-  const [resetUrl, setResetUrl] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setMessage('');
-    setResetUrl('');
 
     if (!email) {
       setError('Please enter your registered email address.');
@@ -34,25 +30,10 @@ export default function ForgotPasswordPage() {
         body: JSON.stringify({ email: emailLower }),
       });
 
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.message || 'Failed to request password reset link.');
-      }
-
-      setMessage(data.data?.message || 'A secure 1-click password reset link has been sent to your email inbox.');
-      if (data.data?.resetUrl) {
-        setResetUrl(data.data.resetUrl);
-      }
+      await res.json();
+      setMessage('If an account exists for this email, a secure password reset link has been dispatched to your inbox.');
     } catch (err: any) {
-      // Local fallback reset link generation
-      const mockToken = Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
-      const localResetUrl = `/reset-password?token=${mockToken}&email=${encodeURIComponent(emailLower)}`;
-      
-      localStorage.setItem('vyora_reset_token', mockToken);
-      localStorage.setItem('vyora_reset_email', emailLower);
-
-      setMessage('A secure 1-click password reset link has been generated.');
-      setResetUrl(localResetUrl);
+      setMessage('If an account exists for this email, a secure password reset link has been dispatched to your inbox.');
     } finally {
       setLoading(false);
     }
@@ -69,30 +50,14 @@ export default function ForgotPasswordPage() {
             <Lock className="w-7 h-7" />
           </div>
           <h1 className="text-2xl font-extrabold tracking-tight text-white">Reset Account Password</h1>
-          <p className="text-xs text-slate-400">Request a single-use 256-bit Cryptographic Magic Reset Link.</p>
+          <p className="text-xs text-slate-400">Request a secure 256-bit Cryptographic Password Reset Link via email.</p>
         </div>
 
         <div className="glass-card p-8 rounded-3xl space-y-6 border border-slate-800 shadow-2xl">
           {message && (
-            <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+            <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-medium leading-relaxed flex items-start gap-3">
+              <CheckCircle2 className="w-5 h-5 flex-shrink-0 mt-0.5" />
               <span>{message}</span>
-            </div>
-          )}
-
-          {resetUrl && (
-            <div className="p-4 rounded-2xl bg-purple-500/10 border border-purple-500/30 space-y-2.5">
-              <div className="flex items-center justify-between text-xs text-purple-300 font-semibold">
-                <span>Magic Reset Link (Single-Use Token):</span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20">256-Bit Token</span>
-              </div>
-              <a
-                href={resetUrl}
-                className="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-purple-600/25"
-              >
-                <span>🔒 Open Reset Password Page</span>
-                <ExternalLink className="w-3.5 h-3.5" />
-              </a>
             </div>
           )}
 
@@ -123,7 +88,7 @@ export default function ForgotPasswordPage() {
               disabled={loading}
               className="w-full py-3 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white text-xs font-semibold shadow-xl shadow-blue-600/25 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
             >
-              <span>{loading ? 'Generating Link...' : 'Send Cryptographic Reset Link'}</span>
+              <span>{loading ? 'Sending Secure Link...' : 'Send Password Reset Link'}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
@@ -137,7 +102,7 @@ export default function ForgotPasswordPage() {
 
         <div className="flex items-center justify-center gap-2 text-[11px] text-slate-500">
           <ShieldCheck className="w-4 h-4 text-emerald-400" />
-          <span>Method 1 Cryptographic Token • Single-Use 15-Min Expiry</span>
+          <span>Strict Email Inbox Delivery • Zero On-Screen Links</span>
         </div>
       </div>
     </div>
