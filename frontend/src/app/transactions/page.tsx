@@ -1,13 +1,27 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Search, Plus, Download, ArrowDownLeft, ArrowUpRight, Receipt } from 'lucide-react';
+import { Search, Plus, Download, ArrowDownLeft, ArrowUpRight, Receipt, Tag } from 'lucide-react';
 import { getCurrentUserEmail, getUserAccountStore, saveUserAccountStore } from '@/lib/api';
+
+const DEFAULT_CATEGORIES = [
+  'Food & Dining',
+  'Groceries',
+  'Salary',
+  'Freelance & Business',
+  'Rent & Housing',
+  'Fuel & Transportation',
+  'Utilities & Subscriptions',
+  'Shopping & Tech',
+  'Health & Medical',
+  'Investments & Savings',
+];
 
 export default function TransactionsPage() {
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('ALL');
   const [transactions, setTransactions] = useState<any[]>([]);
+  const [categoriesList, setCategoriesList] = useState<string[]>(DEFAULT_CATEGORIES);
   const [userEmail, setUserEmail] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
 
@@ -16,27 +30,52 @@ export default function TransactionsPage() {
   const [amount, setAmount] = useState('');
   const [type, setType] = useState('EXPENSE');
   const [category, setCategory] = useState('Food & Dining');
+  const [isCustomCategory, setIsCustomCategory] = useState(false);
+  const [customCategoryInput, setCustomCategoryInput] = useState('');
   const [walletName, setWalletName] = useState('Main Bank Account');
 
   useEffect(() => {
     const email = getCurrentUserEmail();
     setUserEmail(email);
     const store = getUserAccountStore(email);
-    if (store && store.transactions) {
-      setTransactions(store.transactions);
+    if (store) {
+      if (store.transactions) {
+        setTransactions(store.transactions);
+      }
+      // Load saved custom categories if any
+      const savedCustom = store.customCategories || [];
+      const combined = Array.from(new Set([...DEFAULT_CATEGORIES, ...savedCustom]));
+      setCategoriesList(combined);
     }
   }, []);
+
+  const handleCategorySelectChange = (val: string) => {
+    if (val === '__ADD_NEW_CATEGORY__') {
+      setIsCustomCategory(true);
+      setCustomCategoryInput('');
+    } else {
+      setIsCustomCategory(false);
+      setCategory(val);
+    }
+  };
 
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
     if (!desc || !amount) return;
+
+    let finalCategory = category;
+    if (isCustomCategory) {
+      const trimmedCustom = customCategoryInput.trim();
+      if (!trimmedCustom) return;
+      finalCategory = trimmedCustom;
+    }
 
     const parsedAmount = parseFloat(amount);
 
     const newTx = {
       id: `tx-${Date.now()}`,
       description: desc,
-      category,
+      category: finalCategory,
       wallet: walletName,
       amount: parsedAmount,
       type,
@@ -47,9 +86,17 @@ export default function TransactionsPage() {
     const updatedTransactions = [newTx, ...transactions];
     setTransactions(updatedTransactions);
 
+    // Save custom category to list if new
+    let updatedCategories = categoriesList;
+    if (!categoriesList.includes(finalCategory)) {
+      updatedCategories = [...categoriesList, finalCategory];
+      setCategoriesList(updatedCategories);
+    }
+
     // Save to user persistent store
-    const store = getUserAccountStore(userEmail);
+    const store = getUserAccountStore(userEmail) || {};
     store.transactions = updatedTransactions;
+    store.customCategories = updatedCategories.filter((c) => !DEFAULT_CATEGORIES.includes(c));
 
     // Update wallet balance
     if (store.wallets && store.wallets.length > 0) {
@@ -65,6 +112,8 @@ export default function TransactionsPage() {
 
     setDesc('');
     setAmount('');
+    setIsCustomCategory(false);
+    setCustomCategoryInput('');
     setShowAddModal(false);
   };
 
@@ -96,7 +145,7 @@ export default function TransactionsPage() {
         <div>
           <h1 className="text-2xl font-bold text-white tracking-tight">Transactions Ledger</h1>
           <p className="text-xs text-slate-400 mt-1">
-            Manage, filter, and export all your income & expense activity in Indian Rupees (₹).
+            Manage, filter, and export all your income &amp; expense activity with custom categories.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -124,7 +173,7 @@ export default function TransactionsPage() {
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Search description, tags, category..."
+            placeholder="Search description, category..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-4 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
@@ -154,7 +203,7 @@ export default function TransactionsPage() {
             </div>
             <h3 className="text-base font-semibold text-white">No Transactions Recorded Yet</h3>
             <p className="text-xs text-slate-400 max-w-sm mx-auto">
-              Your account ledger is currently clean. Click the button below to record your first income or expense entry!
+              Your account ledger is currently clean. Click the button below to record your first entry with a custom category!
             </p>
             <button
               onClick={() => setShowAddModal(true)}
@@ -192,7 +241,12 @@ export default function TransactionsPage() {
                         <p className="text-[10px] text-slate-500 mt-0.5">#{tx.tags || 'general'}</p>
                       </div>
                     </td>
-                    <td className="py-4 px-4 text-slate-300 font-medium">{tx.category}</td>
+                    <td className="py-4 px-4 font-medium">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 text-slate-200 border border-slate-700/80 text-[11px]">
+                        <Tag className="w-3 h-3 text-blue-400" />
+                        {tx.category}
+                      </span>
+                    </td>
                     <td className="py-4 px-4 text-slate-400">{tx.wallet}</td>
                     <td className="py-4 px-4 text-slate-400">{tx.date}</td>
                     <td
@@ -211,7 +265,7 @@ export default function TransactionsPage() {
         )}
       </div>
 
-      {/* Add Transaction Modal */}
+      {/* Add Transaction Modal with Custom Category Creation */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="glass-card p-6 rounded-2xl w-full max-w-md space-y-4 border border-slate-700 shadow-2xl">
@@ -222,7 +276,7 @@ export default function TransactionsPage() {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Client Payment / Grocery Shopping"
+                  placeholder="e.g. Client Payment / Gym Membership"
                   value={desc}
                   onChange={(e) => setDesc(e.target.value)}
                   className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:border-blue-500 outline-none"
@@ -255,26 +309,71 @@ export default function TransactionsPage() {
                 </div>
               </div>
 
+              {/* Category Selector with Custom Option */}
               <div>
-                <label className="text-xs text-slate-400 block mb-1">Category</label>
-                <select
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:border-blue-500 outline-none"
-                >
-                  <option value="Food & Dining">Food & Dining</option>
-                  <option value="Groceries">Groceries</option>
-                  <option value="Salary">Salary</option>
-                  <option value="Freelance & Business">Freelance & Business</option>
-                  <option value="Rent & Housing">Rent & Housing</option>
-                  <option value="Fuel & Transportation">Fuel & Transportation</option>
-                </select>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="text-xs text-slate-400 font-medium">Category</label>
+                  {!isCustomCategory && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsCustomCategory(true);
+                        setCustomCategoryInput('');
+                      }}
+                      className="text-[11px] text-blue-400 hover:underline font-semibold"
+                    >
+                      + Add New Category
+                    </button>
+                  )}
+                </div>
+
+                {!isCustomCategory ? (
+                  <select
+                    value={category}
+                    onChange={(e) => handleCategorySelectChange(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:border-blue-500 outline-none"
+                  >
+                    {categoriesList.map((catName) => (
+                      <option key={catName} value={catName}>
+                        {catName}
+                      </option>
+                    ))}
+                    <option value="__ADD_NEW_CATEGORY__">➕ Add Custom Category...</option>
+                  </select>
+                ) : (
+                  <div className="space-y-1.5">
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        required
+                        placeholder="Enter your custom category name..."
+                        value={customCategoryInput}
+                        onChange={(e) => setCustomCategoryInput(e.target.value)}
+                        className="flex-1 bg-slate-900 border border-blue-500/70 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                        autoFocus
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setIsCustomCategory(false)}
+                        className="px-3 py-2 rounded-xl bg-slate-800 text-slate-400 text-xs font-semibold hover:text-white"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    <span className="text-[10px] text-blue-400 block">
+                      This custom category will be saved to your account.
+                    </span>
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"
-                  onClick={() => setShowAddModal(false)}
+                  onClick={() => {
+                    setIsCustomCategory(false);
+                    setShowAddModal(false);
+                  }}
                   className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold hover:bg-slate-700"
                 >
                   Cancel
