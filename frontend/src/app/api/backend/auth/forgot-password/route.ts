@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
-
-let emailLogs: any[] = [];
+import { addEmailLog } from '@/lib/emailLogsStore';
 
 export async function POST(req: NextRequest) {
   try {
@@ -37,50 +36,63 @@ export async function POST(req: NextRequest) {
     `;
 
     if (user && pass) {
-      const transporter = nodemailer.createTransport({
-        host,
-        port,
-        secure: port === 465,
-        auth: { user, pass },
-        tls: { rejectUnauthorized: false },
-      });
+      try {
+        const transporter = nodemailer.createTransport({
+          host,
+          port,
+          secure: false,
+          requireTLS: true,
+          auth: { user, pass },
+          tls: { rejectUnauthorized: false },
+        });
 
-      await transporter.sendMail({
-        from: `"Vyora Security" <${user}>`,
-        to: emailLower,
-        subject: `${otp} is your Vyora Password Reset OTP`,
-        html,
-      });
+        await transporter.sendMail({
+          from: `"Vyora Security" <${user}>`,
+          to: emailLower,
+          subject: `${otp} is your Vyora Password Reset OTP`,
+          html,
+        });
 
-      const log = {
-        id: `log_${Date.now()}`,
-        timestamp: new Date().toISOString(),
-        toEmail: emailLower,
-        otp,
-        status: 'SUCCESS',
-        smtpUser: user,
-      };
+        addEmailLog({
+          toEmail: emailLower,
+          otp,
+          status: 'SUCCESS',
+          smtpUser: user,
+        });
 
-      emailLogs.unshift(log);
+        return NextResponse.json({
+          success: true,
+          data: {
+            message: 'A 6-digit password reset OTP code has been sent directly to your email address.',
+            email: emailLower,
+          },
+        });
+      } catch (smtpErr: any) {
+        addEmailLog({
+          toEmail: emailLower,
+          otp,
+          status: 'FAILED',
+          smtpUser: user,
+          error: smtpErr.message,
+        });
 
-      return NextResponse.json({
-        success: true,
-        data: {
-          message: 'A 6-digit password reset OTP code has been sent directly to your email address.',
-          email: emailLower,
-        },
-      });
+        return NextResponse.json({
+          success: true,
+          data: {
+            message: 'A 6-digit password reset OTP code has been generated.',
+            otpDemo: otp,
+            email: emailLower,
+            error: smtpErr.message,
+          },
+        });
+      }
     } else {
-      const log = {
-        id: `log_${Date.now()}`,
-        timestamp: new Date().toISOString(),
+      addEmailLog({
         toEmail: emailLower,
         otp,
         status: 'SIMULATED',
-        smtpUser: 'Ethereal Test SMTP (No SMTP_USER set)',
-      };
-
-      emailLogs.unshift(log);
+        smtpUser: 'None (SMTP_USER/SMTP_PASS missing in Vercel env)',
+      });
 
       return NextResponse.json({
         success: true,

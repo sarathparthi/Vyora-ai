@@ -15,7 +15,8 @@ export class EmailService {
       transporter: nodemailer.createTransport({
         host,
         port,
-        secure: port === 465,
+        secure: false, // 587 uses STARTTLS
+        requireTLS: true,
         auth: user && pass ? { user, pass } : undefined,
         tls: {
           rejectUnauthorized: false,
@@ -93,7 +94,7 @@ export class EmailService {
           subject,
           otp,
           status: 'SIMULATED',
-          smtpUser: 'Ethereal Test SMTP',
+          smtpUser: 'Ethereal Test SMTP (Missing SMTP_USER/SMTP_PASS env)',
           previewUrl,
         });
 
@@ -180,7 +181,7 @@ export class EmailService {
           subject,
           otp,
           status: 'SIMULATED',
-          smtpUser: 'Ethereal Test SMTP',
+          smtpUser: 'Ethereal Test SMTP (Missing SMTP_USER/SMTP_PASS env)',
           previewUrl,
         });
 
