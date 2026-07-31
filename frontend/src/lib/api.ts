@@ -1,4 +1,4 @@
-export const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api/backend';
 
 export function getCurrentUserEmail(): string {
   if (typeof window === 'undefined') return '';
