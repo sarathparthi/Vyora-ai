@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Lock, Mail, ArrowRight, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { Lock, Mail, ArrowRight, ShieldCheck, CheckCircle2, Terminal, RefreshCw, X } from 'lucide-react';
 import { API_BASE } from '@/lib/api';
 
 export default function ForgotPasswordPage() {
@@ -11,6 +11,21 @@ export default function ForgotPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [showLogsModal, setShowLogsModal] = useState(false);
+  const [emailLogs, setEmailLogs] = useState<any[]>([]);
+
+  const fetchLogs = () => {
+    fetch(`${API_BASE}/dev/email-logs`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.data) setEmailLogs(data.data);
+      })
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    fetchLogs();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,6 +50,8 @@ export default function ForgotPasswordPage() {
       const data = await res.json();
       setMessage('A 6-digit password reset OTP code has been sent directly to your email address.');
       localStorage.setItem('vyora_reset_email', emailLower);
+
+      fetchLogs();
 
       setTimeout(() => {
         router.push(`/reset-password?email=${encodeURIComponent(emailLower)}`);
@@ -65,6 +82,21 @@ export default function ForgotPasswordPage() {
         </div>
 
         <div className="glass-card p-8 rounded-3xl space-y-6 border border-slate-800 shadow-2xl">
+          <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+            <span className="text-xs font-bold text-white uppercase tracking-wider">Email Verification</span>
+            <button
+              type="button"
+              onClick={() => {
+                fetchLogs();
+                setShowLogsModal(true);
+              }}
+              className="px-2.5 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[10px] font-bold flex items-center gap-1 hover:bg-indigo-500/30 transition-all"
+            >
+              <Terminal className="w-3 h-3" />
+              <span>Dev Email Logs</span>
+            </button>
+          </div>
+
           {message && (
             <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-medium leading-relaxed flex items-start gap-3">
               <CheckCircle2 className="w-5 h-5 flex-shrink-0 mt-0.5" />
@@ -116,6 +148,70 @@ export default function ForgotPasswordPage() {
           <span>Strict Email Verification • 6-Digit OTP Delivery</span>
         </div>
       </div>
+
+      {/* Developer Email Logs Modal */}
+      {showLogsModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="glass-card p-6 rounded-2xl w-full max-w-lg space-y-4 border border-slate-700 shadow-2xl">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Terminal className="w-4 h-4 text-indigo-400" /> Developer Email Dispatch Monitor
+              </h3>
+              <div className="flex items-center gap-2">
+                <button onClick={fetchLogs} className="p-1 rounded bg-slate-800 text-slate-300 hover:text-white">
+                  <RefreshCw className="w-3.5 h-3.5" />
+                </button>
+                <button onClick={() => setShowLogsModal(false)} className="text-xs text-slate-400 hover:text-white">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-400">Live email dispatch logs and SMTP delivery status:</p>
+
+            <div className="space-y-2 max-h-72 overflow-y-auto">
+              {emailLogs.length === 0 ? (
+                <div className="p-4 text-center text-xs text-slate-500">No email dispatches recorded yet.</div>
+              ) : (
+                emailLogs.map((log) => (
+                  <div
+                    key={log.id}
+                    className="p-3 rounded-xl bg-slate-900 border border-slate-800 space-y-1 font-mono text-[11px]"
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="font-semibold text-white">{log.toEmail}</span>
+                      <span
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          log.status === 'SUCCESS'
+                            ? 'bg-emerald-500/20 text-emerald-400'
+                            : log.status === 'FAILED'
+                            ? 'bg-rose-500/20 text-rose-400'
+                            : 'bg-amber-500/20 text-amber-400'
+                        }`}
+                      >
+                        {log.status}
+                      </span>
+                    </div>
+                    <p className="text-slate-400">SMTP Sender: {log.smtpUser || 'None'}</p>
+                    {log.otp && <p className="text-blue-400 font-bold">OTP Code: {log.otp}</p>}
+                    {log.error && <p className="text-rose-400">Error: {log.error}</p>}
+                    <p className="text-[10px] text-slate-500">{new Date(log.timestamp).toLocaleString()}</p>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                onClick={() => setShowLogsModal(false)}
+                className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold hover:bg-slate-700"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

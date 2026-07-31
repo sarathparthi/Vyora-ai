@@ -66,7 +66,7 @@ export class AuthService {
         email: emailLower,
         passwordHash,
         name: dto.name,
-        isVerified: true, // Instant verification
+        isVerified: true,
       },
     });
 
@@ -201,66 +201,66 @@ export class AuthService {
   }
 
   /**
-   * Method 1: Requests Cryptographic Magic Password Reset Link
+   * Generates and emails 6-Digit Password Reset OTP Code
    */
-  static async requestPasswordReset(email: string, baseUrl: string = 'http://localhost:3000') {
+  static async requestPasswordReset(email: string) {
     const emailLower = email.toLowerCase().trim();
     const user = await prisma.user.findUnique({ where: { email: emailLower } });
 
-    if (!user) {
-      return { message: 'If an account exists for this email, a secure password reset link has been sent to your email.' };
+    const otp = SecurityService.generateOTP();
+    const otpHash = await SecurityService.hashOTP(otp);
+
+    if (user) {
+      await prisma.passwordResetOTP.create({
+        data: {
+          email: emailLower,
+          otpHash,
+          expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+        },
+      });
+
+      await EmailService.sendPasswordResetEmail(emailLower, user.name, otp);
+
+      await prisma.securityAuditLog.create({
+        data: {
+          userId: user.id,
+          event: 'PASSWORD_RESET_OTP_GENERATED',
+          details: `6-Digit Password reset OTP sent to email.`,
+          ipAddress: '127.0.0.1',
+          userAgent: 'Forgot Password Form',
+        },
+      });
+    } else {
+      // Log even if user not found for dev monitoring
+      await EmailService.sendPasswordResetEmail(emailLower, 'User', otp);
     }
 
-    // Generate 256-bit random magic token
-    const magicToken = SecurityService.generateMagicToken();
-    const tokenHash = SecurityService.hashToken(magicToken);
-
-    await prisma.passwordResetOTP.create({
-      data: {
-        email: emailLower,
-        otpHash: tokenHash,
-        expiresAt: new Date(Date.now() + 15 * 60 * 1000), // 15 mins expiry
-      },
-    });
-
-    const resetUrl = `${baseUrl}/reset-password?token=${magicToken}&email=${encodeURIComponent(emailLower)}`;
-    const emailResult = await EmailService.sendMagicResetLinkEmail(emailLower, user.name, resetUrl);
-
-    await prisma.securityAuditLog.create({
-      data: {
-        userId: user.id,
-        event: 'MAGIC_RESET_LINK_GENERATED',
-        details: `Cryptographic magic reset link generated for email.`,
-        ipAddress: '127.0.0.1',
-        userAgent: 'Forgot Password Form',
-      },
-    });
-
     return {
-      message: 'If an account exists for this email, a secure password reset link has been sent to your email.',
-      resetUrl,
-      magicToken,
-      emailPreviewUrl: emailResult.previewUrl,
+      message: 'If an account exists for this email, a 6-digit password reset OTP code has been sent to your inbox.',
+      otpDemo: process.env.SMTP_USER ? undefined : otp,
     };
   }
 
   /**
-   * Resets password using Cryptographic Magic Reset Link Token
+   * Resets password using 6-Digit Email OTP
    */
-  static async resetPasswordWithToken(email: string, token: string, newPassword: string) {
+  static async resetPasswordWithToken(email: string, otp: string, newPassword: string) {
     const emailLower = email.toLowerCase().trim();
     const user = await prisma.user.findUnique({ where: { email: emailLower } });
-    if (!user) throw new Error('Invalid request or expired reset link.');
-
-    const tokenHash = SecurityService.hashToken(token);
+    if (!user) throw new Error('Invalid request or expired OTP.');
 
     const record = await prisma.passwordResetOTP.findFirst({
-      where: { email: emailLower, otpHash: tokenHash },
+      where: { email: emailLower },
       orderBy: { createdAt: 'desc' },
     });
 
     if (!record || new Date() > record.expiresAt) {
-      throw new Error('Invalid or expired password reset link. Please request a new link.');
+      throw new Error('Invalid or expired 6-digit OTP code.');
+    }
+
+    const isValidOTP = SecurityService.verifyOTPHash(otp, record.otpHash);
+    if (!isValidOTP) {
+      throw new Error('Invalid 6-digit OTP code.');
     }
 
     const policyCheck = SecurityService.validatePasswordPolicy(newPassword);
@@ -283,7 +283,6 @@ export class AuthService {
     this.saveDevAccount({ name: user.name, email: emailLower, password: newPassword });
     await SecurityService.recordPasswordHistory(user.id, passwordHash);
 
-    // Invalidate reset tokens and active sessions
     await prisma.refreshToken.deleteMany({ where: { userId: user.id } });
     await prisma.deviceSession.deleteMany({ where: { userId: user.id } });
     await prisma.passwordResetOTP.deleteMany({ where: { email: emailLower } });
@@ -292,7 +291,7 @@ export class AuthService {
       data: {
         userId: user.id,
         event: 'PASSWORD_RESET_SUCCESS',
-        details: 'Password reset completed via magic link. All active sessions invalidated.',
+        details: 'Password reset completed via 6-digit OTP.',
         ipAddress: '127.0.0.1',
         userAgent: 'Reset Password Form',
       },

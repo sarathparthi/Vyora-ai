@@ -8,6 +8,7 @@ import { connectDB } from './config/db';
 import { globalRateLimiter, authRateLimiter } from './middleware/rateLimiter';
 import { authenticateJWT } from './middleware/auth';
 import { setupSwagger } from './swagger';
+import { EmailLogger } from './services/emailLogger';
 
 // Controllers
 import { AuthController } from './controllers/authController';
@@ -33,7 +34,7 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'HEALTHY', timestamp: new Date().toISOString(), service: 'Vyora Enterprise API Engine' });
 });
 
-// Developer Accounts JSON Endpoint (Developer reference)
+// Developer Accounts JSON Endpoint
 app.get('/api/dev/accounts', (req, res) => {
   try {
     const filePath = path.join(process.cwd(), 'dev_accounts.json');
@@ -42,6 +43,16 @@ app.get('/api/dev/accounts', (req, res) => {
       return res.json({ success: true, data: JSON.parse(data || '[]') });
     }
     return res.json({ success: true, data: [] });
+  } catch (err: any) {
+    return res.json({ success: false, data: [] });
+  }
+});
+
+// Developer Email Dispatch Monitor Endpoint
+app.get('/api/dev/email-logs', (req, res) => {
+  try {
+    const logs = EmailLogger.getLogs();
+    return res.json({ success: true, data: logs });
   } catch (err: any) {
     return res.json({ success: false, data: [] });
   }

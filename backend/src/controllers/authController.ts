@@ -62,8 +62,7 @@ export class AuthController {
       const { email } = req.body;
       if (!email) return res.status(400).json({ success: false, message: 'Email address is required.' });
 
-      const origin = req.headers.origin || 'http://localhost:3000';
-      const result = await AuthService.requestPasswordReset(email, origin);
+      const result = await AuthService.requestPasswordReset(email);
       return res.json({ success: true, data: result });
     } catch (error: any) {
       return res.status(400).json({ success: false, message: error.message });
@@ -76,7 +75,7 @@ export class AuthController {
       const resetToken = token || otp;
 
       if (!email || !resetToken || !newPassword) {
-        return res.status(400).json({ success: false, message: 'Email, reset token, and new password are required.' });
+        return res.status(400).json({ success: false, message: 'Email, OTP code, and new password are required.' });
       }
 
       const result = await AuthService.resetPasswordWithToken(email, resetToken, newPassword);
