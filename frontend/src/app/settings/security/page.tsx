@@ -1,37 +1,112 @@
 'use client';
 
-import { useState } from 'react';
-import { 
-  ShieldCheck, 
-  Laptop, 
-  Smartphone, 
-  LogOut, 
-  Key, 
-  Clock, 
-  Globe, 
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import {
+  ShieldCheck,
+  Laptop,
+  LogOut,
+  Key,
+  Clock,
+  Globe,
   AlertTriangle,
   CheckCircle2,
-  Lock
+  Lock,
+  Check,
+  X,
 } from 'lucide-react';
 
-const MOCK_SESSIONS = [
-  { id: 'sess-1', device: 'Windows Desktop', browser: 'Chrome 126', os: 'Windows 11', ip: '103.142.152.12', location: 'Chennai, IN', isCurrent: true, loggedIn: 'Active Now' },
-  { id: 'sess-2', device: 'iPhone 15 Pro Max', browser: 'Safari 17', os: 'iOS 17.5', ip: '49.207.210.45', location: 'Chennai, IN', isCurrent: false, loggedIn: '2 hours ago' },
-  { id: 'sess-3', device: 'MacBook Pro M3', browser: 'Firefox 127', os: 'macOS Sonoma', ip: '103.142.152.14', location: 'Bangalore, IN', isCurrent: false, loggedIn: 'Yesterday' },
-];
+interface Session {
+  id: string;
+  device: string;
+  browser: string;
+  os: string;
+  ip: string;
+  location: string;
+  isCurrent: boolean;
+  loggedIn: string;
+}
+
+function buildCurrentSession(): Session {
+  const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
+
+  let browser = 'Unknown Browser';
+  if (ua.includes('Chrome') && !ua.includes('Edg')) browser = 'Chrome';
+  else if (ua.includes('Firefox')) browser = 'Firefox';
+  else if (ua.includes('Safari') && !ua.includes('Chrome')) browser = 'Safari';
+  else if (ua.includes('Edg')) browser = 'Edge';
+
+  let os = 'Unknown OS';
+  if (ua.includes('Windows NT 10')) os = 'Windows 11/10';
+  else if (ua.includes('Windows')) os = 'Windows';
+  else if (ua.includes('Mac OS X')) os = 'macOS';
+  else if (ua.includes('Linux')) os = 'Linux';
+  else if (ua.includes('Android')) os = 'Android';
+  else if (ua.includes('iPhone') || ua.includes('iPad')) os = 'iOS';
+
+  const isMobile = /iPhone|iPad|Android|Mobile/i.test(ua);
+  const device = isMobile ? 'Mobile Device' : 'Desktop / Laptop';
+
+  return {
+    id: 'current',
+    device,
+    browser,
+    os,
+    ip: 'Your IP',
+    location: 'Your Location',
+    isCurrent: true,
+    loggedIn: 'Active Now',
+  };
+}
 
 export default function SecuritySettingsPage() {
-  const [sessions, setSessions] = useState(MOCK_SESSIONS);
+  const router = useRouter();
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [currentUser, setCurrentUser] = useState<any>(null);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [authChecked, setAuthChecked] = useState(false);
 
-  const handleRevokeSession = (id: string) => {
-    setSessions(sessions.filter((s) => s.id !== id));
-  };
+  // Password complexity checks
+  const hasMinLength = newPassword.length >= 12;
+  const hasUppercase = /[A-Z]/.test(newPassword);
+  const hasLowercase = /[a-z]/.test(newPassword);
+  const hasNumber = /[0-9]/.test(newPassword);
+  const hasSpecial = /[@$!%*?&!#^()\-=_+]/.test(newPassword);
+  const passwordsMatch = newPassword.length > 0 && newPassword === confirmPassword;
+  const isPasswordValid = hasMinLength && hasUppercase && hasLowercase && hasNumber && hasSpecial;
+
+  useEffect(() => {
+    // Auth guard: if no token → redirect to login immediately
+    const token = localStorage.getItem('vyora_token');
+    if (!token) {
+      router.replace('/login');
+      return;
+    }
+
+    // Load current user
+    try {
+      const u = JSON.parse(localStorage.getItem('vyora_user') || '{}');
+      setCurrentUser(u);
+    } catch (_) {}
+
+    // Only show the real current session — no fake data
+    setSessions([buildCurrentSession()]);
+    setAuthChecked(true);
+  }, [router]);
+
+  // Block render until auth check is complete
+  if (!authChecked) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   const handleRevokeOtherSessions = () => {
     setSessions(sessions.filter((s) => s.isCurrent));
@@ -48,17 +123,43 @@ export default function SecuritySettingsPage() {
       return;
     }
 
-    if (newPassword.length < 12) {
-      setError('New password must be at least 12 characters long.');
+    if (!isPasswordValid) {
+      setError('New password does not meet complexity requirements.');
       return;
     }
 
-    if (newPassword !== confirmPassword) {
+    if (!passwordsMatch) {
       setError('New passwords do not match.');
       return;
     }
 
-    setMessage('Password changed successfully! Previous sessions have been revoked.');
+    // Verify current password against localStorage
+    const email = currentUser?.email || '';
+    const existingUsersStr = localStorage.getItem('vyora_registered_users') || '[]';
+    let registeredUsers: any[] = [];
+    try {
+      registeredUsers = JSON.parse(existingUsersStr);
+    } catch (_) {}
+
+    const userIndex = registeredUsers.findIndex(
+      (u: any) => u.email === email.toLowerCase().trim()
+    );
+
+    if (userIndex === -1) {
+      setError('Account not found. Please log out and back in.');
+      return;
+    }
+
+    if (registeredUsers[userIndex].password !== currentPassword) {
+      setError('Current password is incorrect.');
+      return;
+    }
+
+    // Update password in localStorage
+    registeredUsers[userIndex].password = newPassword;
+    localStorage.setItem('vyora_registered_users', JSON.stringify(registeredUsers));
+
+    setMessage('Password changed successfully! Please use your new password next time you sign in.');
     setCurrentPassword('');
     setNewPassword('');
     setConfirmPassword('');
@@ -70,9 +171,11 @@ export default function SecuritySettingsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2">
-            Security & Active Device Management <ShieldCheck className="w-5 h-5 text-emerald-400" />
+            Security &amp; Active Device Management <ShieldCheck className="w-5 h-5 text-emerald-400" />
           </h1>
-          <p className="text-xs text-slate-400 mt-1">Manage active device sessions, password policies, 2FA, and audit logging.</p>
+          <p className="text-xs text-slate-400 mt-1">
+            Manage active device sessions, password policies, and account security.
+          </p>
         </div>
 
         <button
@@ -91,12 +194,16 @@ export default function SecuritySettingsPage() {
         </div>
       )}
 
-      {/* Active Device Sessions List */}
+      {/* Active Device Sessions */}
       <div className="glass-card p-6 rounded-2xl space-y-6">
         <div className="flex items-center justify-between border-b border-slate-800 pb-4">
           <div>
-            <h2 className="text-base font-semibold text-white">Active Device Sessions ({sessions.length})</h2>
-            <p className="text-xs text-slate-400 mt-0.5">Devices currently signed into your Vyora master account</p>
+            <h2 className="text-base font-semibold text-white">
+              Active Device Sessions ({sessions.length})
+            </h2>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Devices currently signed into your Vyora account
+            </p>
           </div>
 
           {sessions.length > 1 && (
@@ -112,10 +219,13 @@ export default function SecuritySettingsPage() {
 
         <div className="divide-y divide-slate-800/60">
           {sessions.map((sess) => (
-            <div key={sess.id} className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div
+              key={sess.id}
+              className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+            >
               <div className="flex items-center gap-4">
                 <div className="w-10 h-10 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-blue-400">
-                  {sess.device.includes('iPhone') || sess.device.includes('Mobile') ? <Smartphone className="w-5 h-5" /> : <Laptop className="w-5 h-5" />}
+                  <Laptop className="w-5 h-5" />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
@@ -127,28 +237,20 @@ export default function SecuritySettingsPage() {
                     )}
                   </div>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    {sess.browser} • {sess.os} • IP: {sess.ip}
+                    {sess.browser} &bull; {sess.os}
                   </p>
                   <p className="text-[11px] text-slate-500 flex items-center gap-1 mt-1">
-                    <Globe className="w-3 h-3" /> {sess.location} • <Clock className="w-3 h-3" /> {sess.loggedIn}
+                    <Globe className="w-3 h-3" /> {sess.location} &bull;{' '}
+                    <Clock className="w-3 h-3" /> {sess.loggedIn}
                   </p>
                 </div>
               </div>
-
-              {!sess.isCurrent && (
-                <button
-                  onClick={() => handleRevokeSession(sess.id)}
-                  className="self-start sm:self-center px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-500/20 text-slate-300 hover:text-rose-400 text-xs font-medium border border-slate-700 transition-all"
-                >
-                  Revoke Session
-                </button>
-              )}
             </div>
           ))}
         </div>
       </div>
 
-      {/* Security Specs Overview */}
+      {/* Security Specs */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <div className="glass-card p-5 rounded-2xl space-y-2 border-l-4 border-l-emerald-500">
           <h3 className="font-semibold text-sm text-white flex items-center gap-2">
@@ -156,7 +258,8 @@ export default function SecuritySettingsPage() {
             <span>Argon2id Hashing Engine</span>
           </h3>
           <p className="text-xs text-slate-400">
-            OWASP recommended password hashing with 64 MB memory cost factor & GPU brute-force protection.
+            OWASP recommended password hashing with 64 MB memory cost factor &amp; GPU brute-force
+            protection.
           </p>
         </div>
 
@@ -173,9 +276,19 @@ export default function SecuritySettingsPage() {
 
       {/* Change Password Modal */}
       {showPasswordModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="glass-card p-6 rounded-2xl w-full max-w-md space-y-4 border border-slate-700 shadow-2xl">
-            <h3 className="text-lg font-bold text-white">Change Password</h3>
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <Key className="w-5 h-5 text-blue-400" /> Change Password
+              </h3>
+              <button
+                onClick={() => { setShowPasswordModal(false); setError(''); }}
+                className="text-slate-400 hover:text-white text-xs"
+              >
+                ✕
+              </button>
+            </div>
 
             {error && (
               <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-semibold">
@@ -197,23 +310,42 @@ export default function SecuritySettingsPage() {
               </div>
 
               <div>
-                <label className="text-xs text-slate-400 block mb-1">New Password (12+ Chars, Upper, Lower, Number, Special)</label>
+                <label className="text-xs text-slate-400 block mb-1">New Password</label>
                 <input
                   type="password"
                   required
-                  placeholder="Vyora@2026!"
+                  placeholder="••••••••••••"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:border-blue-500 outline-none"
                 />
               </div>
 
+              {/* Complexity checklist */}
+              {newPassword.length > 0 && (
+                <div className="grid grid-cols-2 gap-1 text-[11px]">
+                  {[
+                    { ok: hasMinLength, label: '12+ chars' },
+                    { ok: hasUppercase, label: 'Uppercase' },
+                    { ok: hasLowercase, label: 'Lowercase' },
+                    { ok: hasNumber, label: 'Number' },
+                    { ok: hasSpecial, label: 'Special char' },
+                    { ok: passwordsMatch, label: 'Passwords match' },
+                  ].map(({ ok, label }) => (
+                    <div key={label} className={`flex items-center gap-1 ${ok ? 'text-emerald-400' : 'text-slate-500'}`}>
+                      {ok ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
+                      <span>{label}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <div>
                 <label className="text-xs text-slate-400 block mb-1">Confirm New Password</label>
                 <input
                   type="password"
                   required
-                  placeholder="Vyora@2026!"
+                  placeholder="••••••••••••"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:border-blue-500 outline-none"
@@ -223,14 +355,15 @@ export default function SecuritySettingsPage() {
               <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"
-                  onClick={() => setShowPasswordModal(false)}
+                  onClick={() => { setShowPasswordModal(false); setError(''); }}
                   className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold hover:bg-slate-700"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-semibold hover:bg-blue-500 shadow-lg shadow-blue-600/25"
+                  disabled={!isPasswordValid || !passwordsMatch || !currentPassword}
+                  className="px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-semibold hover:bg-blue-500 shadow-lg shadow-blue-600/25 disabled:opacity-50"
                 >
                   Update Password
                 </button>

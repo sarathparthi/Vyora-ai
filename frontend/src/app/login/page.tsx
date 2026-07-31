@@ -6,6 +6,16 @@ import Link from 'next/link';
 import { Sparkles, ShieldCheck, ArrowRight, Lock, Mail, User, Code, AlertCircle } from 'lucide-react';
 import { API_BASE } from '@/lib/api';
 
+// Set a session cookie readable by the Next.js middleware (edge runtime)
+function setAuthCookie(token: string) {
+  const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toUTCString();
+  document.cookie = `vyora_auth=${token}; path=/; expires=${expires}; SameSite=Strict`;
+}
+
+function clearAuthCookie() {
+  document.cookie = 'vyora_auth=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict';
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const [isRegister, setIsRegister] = useState(false);
@@ -47,8 +57,10 @@ export default function LoginPage() {
         throw new Error(data.message || 'Invalid email or password.');
       }
 
-      localStorage.setItem('vyora_token', data.data.accessToken || `token_${Date.now()}`);
+      const tok = data.data.accessToken || `token_${Date.now()}`;
+      localStorage.setItem('vyora_token', tok);
       localStorage.setItem('vyora_user', JSON.stringify(data.data.user));
+      setAuthCookie(tok);
       router.push('/');
     } catch (apiErr: any) {
       if (isRegister) {
@@ -109,8 +121,10 @@ export default function LoginPage() {
               return;
             }
 
-            localStorage.setItem('vyora_token', `token_${Date.now()}`);
+            const tok = `token_${Date.now()}`;
+            localStorage.setItem('vyora_token', tok);
             localStorage.setItem('vyora_user', JSON.stringify({ name: matchedDev.name, email: matchedDev.email, role: 'USER' }));
+            setAuthCookie(tok);
             router.push('/');
             return;
           }
@@ -127,8 +141,10 @@ export default function LoginPage() {
         }
 
         // Correct password -> Grant access and store exact User Name and Email
-        localStorage.setItem('vyora_token', `token_${Date.now()}`);
+        const tok = `token_${Date.now()}`;
+        localStorage.setItem('vyora_token', tok);
         localStorage.setItem('vyora_user', JSON.stringify({ name: matchedUser.name, email: matchedUser.email, role: 'USER' }));
+        setAuthCookie(tok);
         router.push('/');
       }
     } finally {

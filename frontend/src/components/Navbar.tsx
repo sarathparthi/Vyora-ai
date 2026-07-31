@@ -16,6 +16,8 @@ export function Navbar({ onToggleMobileMenu, onOpenAddModal }: NavbarProps) {
   const handleLogout = () => {
     localStorage.removeItem('vyora_token');
     localStorage.removeItem('vyora_user');
+    // Clear the middleware auth cookie so protected routes are immediately blocked
+    document.cookie = 'vyora_auth=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict';
     router.push('/login');
   };
 
