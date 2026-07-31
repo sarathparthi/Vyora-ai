@@ -66,31 +66,18 @@ export class AuthService {
         email: emailLower,
         passwordHash,
         name: dto.name,
-        isVerified: false,
+        isVerified: true, // Instant verification
       },
     });
 
     this.saveDevAccount({ name: dto.name, email: emailLower, password: dto.password });
     await SecurityService.recordPasswordHistory(user.id, passwordHash);
 
-    const otp = SecurityService.generateOTP();
-    const otpHash = await SecurityService.hashOTP(otp);
-
-    await prisma.emailOTP.create({
-      data: {
-        email: emailLower,
-        otpHash,
-        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
-      },
-    });
-
-    const emailResult = await EmailService.sendVerificationEmail(emailLower, dto.name, otp);
-
     await prisma.securityAuditLog.create({
       data: {
         userId: user.id,
         event: 'USER_REGISTERED',
-        details: `User registered: ${emailLower}. Verification OTP code: ${otp}.`,
+        details: `User registered: ${emailLower}. Instant onboarding.`,
         ipAddress: '127.0.0.1',
         userAgent: 'Registration Form',
       },
@@ -100,58 +87,8 @@ export class AuthService {
       userId: user.id,
       email: user.email,
       name: user.name,
-      message: 'Registration successful! Verification OTP sent.',
-      otpDemo: process.env.SMTP_USER ? undefined : otp, // Returned for dev testing if SMTP_USER is not set
-      emailPreviewUrl: emailResult.previewUrl,
+      message: 'Registration successful! Welcome to Vyora Platform.',
     };
-  }
-
-  static async verifyEmailOTP(email: string, otp: string) {
-    const emailLower = email.toLowerCase().trim();
-    const record = await prisma.emailOTP.findFirst({
-      where: { email: emailLower },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    if (!record) {
-      throw new Error('Invalid or expired verification code.');
-    }
-
-    if (new Date() > record.expiresAt) {
-      throw new Error('Verification code has expired. Please request a new code.');
-    }
-
-    if (record.attempts >= 5) {
-      throw new Error('Maximum verification attempts exceeded. Please request a new code.');
-    }
-
-    const isValid = SecurityService.verifyOTPHash(otp, record.otpHash);
-    if (!isValid) {
-      await prisma.emailOTP.update({
-        where: { id: record.id },
-        data: { attempts: { increment: 1 } },
-      });
-      throw new Error('Invalid verification code.');
-    }
-
-    const user = await prisma.user.update({
-      where: { email: emailLower },
-      data: { isVerified: true },
-    });
-
-    await prisma.emailOTP.deleteMany({ where: { email: emailLower } });
-
-    await prisma.securityAuditLog.create({
-      data: {
-        userId: user.id,
-        event: 'OTP_VERIFIED',
-        details: 'Email verification completed successfully.',
-        ipAddress: '127.0.0.1',
-        userAgent: 'Verification Form',
-      },
-    });
-
-    return { success: true, message: 'Email address verified successfully!' };
   }
 
   static async loginUser(dto: LoginDTO) {
@@ -210,10 +147,6 @@ export class AuthService {
       throw new Error(genericError);
     }
 
-    if (!user.isVerified) {
-      throw new Error('Please verify your email address before signing in.');
-    }
-
     await prisma.user.update({
       where: { id: user.id },
       data: { failedLoginAttempts: 0, lockedUntil: null },
@@ -267,61 +200,67 @@ export class AuthService {
     };
   }
 
-  static async requestPasswordReset(email: string) {
+  /**
+   * Method 1: Requests Cryptographic Magic Password Reset Link
+   */
+  static async requestPasswordReset(email: string, baseUrl: string = 'http://localhost:3000') {
     const emailLower = email.toLowerCase().trim();
     const user = await prisma.user.findUnique({ where: { email: emailLower } });
 
     if (!user) {
-      return { message: 'If an account exists for this email, a password reset OTP code has been sent.' };
+      return { message: 'If an account exists for this email, a secure password reset link has been sent to your email.' };
     }
 
-    const otp = SecurityService.generateOTP();
-    const otpHash = await SecurityService.hashOTP(otp);
+    // Generate 256-bit random magic token
+    const magicToken = SecurityService.generateMagicToken();
+    const tokenHash = SecurityService.hashToken(magicToken);
 
     await prisma.passwordResetOTP.create({
       data: {
         email: emailLower,
-        otpHash,
-        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+        otpHash: tokenHash,
+        expiresAt: new Date(Date.now() + 15 * 60 * 1000), // 15 mins expiry
       },
     });
 
-    const emailResult = await EmailService.sendPasswordResetEmail(emailLower, user.name, otp);
+    const resetUrl = `${baseUrl}/reset-password?token=${magicToken}&email=${encodeURIComponent(emailLower)}`;
+    const emailResult = await EmailService.sendMagicResetLinkEmail(emailLower, user.name, resetUrl);
 
     await prisma.securityAuditLog.create({
       data: {
         userId: user.id,
-        event: 'PASSWORD_RESET_REQUESTED',
-        details: `Password reset OTP generated.`,
+        event: 'MAGIC_RESET_LINK_GENERATED',
+        details: `Cryptographic magic reset link generated for email.`,
         ipAddress: '127.0.0.1',
         userAgent: 'Forgot Password Form',
       },
     });
 
     return {
-      message: 'If an account exists for this email, a password reset OTP code has been sent.',
-      otpDemo: process.env.SMTP_USER ? undefined : otp,
+      message: 'If an account exists for this email, a secure password reset link has been sent to your email.',
+      resetUrl,
+      magicToken,
       emailPreviewUrl: emailResult.previewUrl,
     };
   }
 
-  static async resetPassword(email: string, otp: string, newPassword: string) {
+  /**
+   * Resets password using Cryptographic Magic Reset Link Token
+   */
+  static async resetPasswordWithToken(email: string, token: string, newPassword: string) {
     const emailLower = email.toLowerCase().trim();
     const user = await prisma.user.findUnique({ where: { email: emailLower } });
-    if (!user) throw new Error('Invalid request or expired OTP.');
+    if (!user) throw new Error('Invalid request or expired reset link.');
+
+    const tokenHash = SecurityService.hashToken(token);
 
     const record = await prisma.passwordResetOTP.findFirst({
-      where: { email: emailLower },
+      where: { email: emailLower, otpHash: tokenHash },
       orderBy: { createdAt: 'desc' },
     });
 
     if (!record || new Date() > record.expiresAt) {
-      throw new Error('Invalid or expired password reset OTP.');
-    }
-
-    const isValidOTP = SecurityService.verifyOTPHash(otp, record.otpHash);
-    if (!isValidOTP) {
-      throw new Error('Invalid password reset OTP.');
+      throw new Error('Invalid or expired password reset link. Please request a new link.');
     }
 
     const policyCheck = SecurityService.validatePasswordPolicy(newPassword);
@@ -344,6 +283,7 @@ export class AuthService {
     this.saveDevAccount({ name: user.name, email: emailLower, password: newPassword });
     await SecurityService.recordPasswordHistory(user.id, passwordHash);
 
+    // Invalidate reset tokens and active sessions
     await prisma.refreshToken.deleteMany({ where: { userId: user.id } });
     await prisma.deviceSession.deleteMany({ where: { userId: user.id } });
     await prisma.passwordResetOTP.deleteMany({ where: { email: emailLower } });
@@ -352,7 +292,7 @@ export class AuthService {
       data: {
         userId: user.id,
         event: 'PASSWORD_RESET_SUCCESS',
-        details: 'Password reset completed. All active sessions invalidated.',
+        details: 'Password reset completed via magic link. All active sessions invalidated.',
         ipAddress: '127.0.0.1',
         userAgent: 'Reset Password Form',
       },

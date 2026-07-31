@@ -9,7 +9,7 @@ export class SecurityService {
    * - At least 1 Uppercase letter (A-Z)
    * - At least 1 Lowercase letter (a-z)
    * - At least 1 Number (0-9)
-   * - At least 1 Special Character (@$!%*?&!#^()-_=+)
+   * - At least 1 Special Character (@$!%*?&)
    */
   static validatePasswordPolicy(password: string): { isValid: boolean; message?: string } {
     if (!password || password.length < 12) {
@@ -54,30 +54,35 @@ export class SecurityService {
   }
 
   /**
+   * Generates 256-bit cryptographically secure random token (64 hex characters)
+   */
+  static generateMagicToken(): string {
+    return crypto.randomBytes(32).toString('hex');
+  }
+
+  /**
+   * Hashes a token using SHA-256 for secure DB storage
+   */
+  static hashToken(token: string): string {
+    return crypto.createHash('sha256').update(token).digest('hex');
+  }
+
+  /**
    * Generates cryptographically secure 6-Digit OTP code
    */
   static generateOTP(): string {
     return crypto.randomInt(100000, 999999).toString();
   }
 
-  /**
-   * Hashes OTP code for secure storage
-   */
   static async hashOTP(otp: string): Promise<string> {
     return crypto.createHash('sha256').update(otp).digest('hex');
   }
 
-  /**
-   * Verifies OTP code against stored SHA-256 hash
-   */
   static verifyOTPHash(otp: string, storedHash: string): boolean {
     const computedHash = crypto.createHash('sha256').update(otp).digest('hex');
     return crypto.timingSafeEqual(Buffer.from(computedHash), Buffer.from(storedHash));
   }
 
-  /**
-   * Checks if a new password was used in the previous 5 passwords for this user
-   */
   static async isPasswordReused(userId: string, newPassword: string): Promise<boolean> {
     const history = await prisma.passwordHistory.findMany({
       where: { userId },
@@ -93,15 +98,11 @@ export class SecurityService {
     return false;
   }
 
-  /**
-   * Records password in user's history and trims history beyond the last 5
-   */
   static async recordPasswordHistory(userId: string, passwordHash: string): Promise<void> {
     await prisma.passwordHistory.create({
       data: { userId, passwordHash },
     });
 
-    // Clean up older records beyond 5
     const history = await prisma.passwordHistory.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
@@ -115,9 +116,6 @@ export class SecurityService {
     }
   }
 
-  /**
-   * Checks if user account is currently locked out
-   */
   static isAccountLocked(lockedUntil: Date | null): boolean {
     if (!lockedUntil) return false;
     return new Date() < new Date(lockedUntil);
