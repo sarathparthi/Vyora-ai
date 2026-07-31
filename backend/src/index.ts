@@ -20,6 +20,9 @@ import { AIController } from './controllers/aiController';
 
 const app = express();
 
+// Trust reverse proxy for Vercel deployment
+app.set('trust proxy', 1);
+
 // Security Middleware
 app.use(helmet());
 app.use(cors({ origin: ENV.CORS_ORIGIN, credentials: true }));
