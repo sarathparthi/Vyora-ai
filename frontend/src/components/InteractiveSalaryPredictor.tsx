@@ -11,7 +11,6 @@ import {
   Sliders,
   DollarSign,
   ArrowRight,
-  ShieldAlert,
   Zap,
   Check,
 } from 'lucide-react';
@@ -57,7 +56,7 @@ const DEFAULT_CATEGORIES: CategoryAllocation[] = [
 ];
 
 export default function InteractiveSalaryPredictor() {
-  const [monthlySalary, setMonthlySalary] = useState<number>(75000);
+  const [monthlySalary, setMonthlySalary] = useState<number>(0);
   const [selectedRule, setSelectedRule] = useState<string>('50-30-20');
   const [categories, setCategories] = useState<CategoryAllocation[]>(DEFAULT_CATEGORIES);
   const [appliedMessage, setAppliedMessage] = useState<string>('');
@@ -77,6 +76,8 @@ export default function InteractiveSalaryPredictor() {
         setMonthlySalary(Math.round(totalIncome));
       } else if (store.monthlyBudgetCap && Number(store.monthlyBudgetCap) > 0) {
         setMonthlySalary(Math.round(Number(store.monthlyBudgetCap) * 1.25));
+      } else {
+        setMonthlySalary(0);
       }
     }
   }, []);
@@ -125,19 +126,24 @@ export default function InteractiveSalaryPredictor() {
   let riskColor = 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20';
   let riskLabel = 'Optimal Financial Allocation';
 
-  if (totalPercent > 100 || predictedExpensePercent > 85) {
-    riskStatus = 'CRITICAL';
-    riskColor = 'text-rose-400 bg-rose-500/10 border-rose-500/20';
-    riskLabel = 'High Financial Over-commitment';
-  } else if (predictedExpensePercent > 70) {
-    riskStatus = 'MODERATE';
-    riskColor = 'text-amber-400 bg-amber-500/10 border-amber-500/20';
-    riskLabel = 'Moderate Expense Velocity';
+  if (monthlySalary > 0) {
+    if (totalPercent > 100 || predictedExpensePercent > 85) {
+      riskStatus = 'CRITICAL';
+      riskColor = 'text-rose-400 bg-rose-500/10 border-rose-500/20';
+      riskLabel = 'High Financial Over-commitment';
+    } else if (predictedExpensePercent > 70) {
+      riskStatus = 'MODERATE';
+      riskColor = 'text-amber-400 bg-amber-500/10 border-amber-500/20';
+      riskLabel = 'Moderate Expense Velocity';
+    }
+  } else {
+    riskLabel = 'Awaiting Salary Input';
+    riskColor = 'text-slate-400 bg-slate-800 border-slate-700';
   }
 
   // Apply Predicted Budget Caps to user account store
   const handleApplyToAccount = () => {
-    if (!userEmail) return;
+    if (!userEmail || monthlySalary <= 0) return;
     const store = getUserAccountStore(userEmail) || {};
 
     // 1. Update master monthly budget cap
@@ -222,7 +228,7 @@ export default function InteractiveSalaryPredictor() {
               value={monthlySalary || ''}
               onChange={(e) => setMonthlySalary(Math.max(0, parseInt(e.target.value) || 0))}
               className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-8 pr-4 py-3 text-lg font-bold text-white focus:outline-none focus:border-purple-500 transition-all font-mono"
-              placeholder="75000"
+              placeholder="0"
             />
           </div>
 
@@ -402,7 +408,8 @@ export default function InteractiveSalaryPredictor() {
         <button
           type="button"
           onClick={handleApplyToAccount}
-          className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white text-xs font-bold shadow-xl shadow-purple-600/25 flex items-center justify-center gap-2 transition-all active:scale-95"
+          disabled={monthlySalary <= 0}
+          className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white text-xs font-bold shadow-xl shadow-purple-600/25 flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <span>Apply AI Prediction to My Monthly Budget</span>
           <ArrowRight className="w-4 h-4" />

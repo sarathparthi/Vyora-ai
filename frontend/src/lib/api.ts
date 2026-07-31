@@ -19,7 +19,18 @@ export function getUserAccountStore(email: string) {
 
   if (existing) {
     try {
-      return JSON.parse(existing);
+      const parsed = JSON.parse(existing);
+      // Clean legacy mock goals if present from old versions
+      if (Array.isArray(parsed.goals)) {
+        parsed.goals = parsed.goals.filter(
+          (g: any) =>
+            g.id !== '1' &&
+            g.id !== '2' &&
+            g.id !== '3' &&
+            !['Emergency Fund Reserve', 'New M3 MacBook Pro', 'Ladakh Road Trip Fund'].includes(g.name)
+        );
+      }
+      return parsed;
     } catch (e) {}
   }
 
