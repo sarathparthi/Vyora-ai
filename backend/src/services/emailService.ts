@@ -1,20 +1,36 @@
 import nodemailer from 'nodemailer';
 
 export class EmailService {
-  private static transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST || 'smtp.gmail.com',
-    port: Number(process.env.SMTP_PORT) || 587,
-    secure: process.env.SMTP_SECURE === 'true',
-    auth: {
-      user: process.env.SMTP_USER || '',
-      pass: process.env.SMTP_PASS || '',
-    },
-  });
+  /**
+   * Dynamically gets Nodemailer transporter using live process.env variables
+   */
+  private static getTransporter() {
+    const host = process.env.SMTP_HOST || 'smtp.gmail.com';
+    const port = Number(process.env.SMTP_PORT) || 587;
+    const user = process.env.SMTP_USER || process.env.NEXT_PUBLIC_SMTP_USER || '';
+    const pass = process.env.SMTP_PASS || process.env.NEXT_PUBLIC_SMTP_PASS || '';
+
+    return {
+      transporter: nodemailer.createTransport({
+        host,
+        port,
+        secure: port === 465,
+        auth: user && pass ? { user, pass } : undefined,
+        tls: {
+          rejectUnauthorized: false,
+        },
+      }),
+      user,
+      pass,
+    };
+  }
 
   /**
    * Sends Cryptographic Magic Password Reset Link Email (Method 1)
    */
-  static async sendMagicResetLinkEmail(toEmail: string, name: string, resetUrl: string): Promise<{ sent: boolean; previewUrl?: string }> {
+  static async sendMagicResetLinkEmail(toEmail: string, name: string, resetUrl: string): Promise<{ sent: boolean; previewUrl?: string; error?: string }> {
+    const { transporter, user, pass } = this.getTransporter();
+
     const html = `
       <div style="font-family: Arial, sans-serif; background-color: #0B0F17; color: #F8FAFC; padding: 40px 20px; text-align: center;">
         <div style="max-width: 520px; margin: 0 auto; background: #0F172A; border: 1px solid #1E293B; border-radius: 24px; padding: 36px;">
@@ -26,7 +42,7 @@ export class EmailService {
             Hello ${name || 'User'},<br/>
             We received a request to reset your Vyora account password. Click the secure button below to set your new password:
           </p>
-          <a href="${resetUrl}" style="display: inline-block; background: linear-gradient(135deg, #EF4444, #DC2626); color: #FFFFFF; font-size: 14px; font-weight: bold; text-decoration: none; padding: 14px 32px; border-radius: 14px; shadow: 0 4px 14px rgba(239, 68, 68, 0.4);">
+          <a href="${resetUrl}" style="display: inline-block; background: linear-gradient(135deg, #EF4444, #DC2626); color: #FFFFFF; font-size: 14px; font-weight: bold; text-decoration: none; padding: 14px 32px; border-radius: 14px; box-shadow: 0 4px 14px rgba(239, 68, 68, 0.4);">
             🔒 Reset My Password Now
           </a>
           <p style="font-size: 11px; color: #64748B; margin-top: 32px;">
@@ -37,16 +53,17 @@ export class EmailService {
     `;
 
     try {
-      if (process.env.SMTP_USER && process.env.SMTP_PASS) {
-        await this.transporter.sendMail({
-          from: `"Vyora Security" <${process.env.SMTP_USER}>`,
+      if (user && pass) {
+        await transporter.sendMail({
+          from: `"Vyora Security" <${user}>`,
           to: toEmail,
           subject: `Reset your Vyora account password`,
           html,
         });
-        console.log(`✉️ Magic Password Reset Email sent to ${toEmail}`);
+        console.log(`✉️ REAL GMAIL SMTP Email sent to ${toEmail} via ${user}`);
         return { sent: true };
       } else {
+        console.warn('⚠️ SMTP_USER or SMTP_PASS missing in process.env. Using Ethereal test transporter.');
         const testAccount = await nodemailer.createTestAccount();
         const testTransporter = nodemailer.createTransport({
           host: 'smtp.ethereal.email',
@@ -66,12 +83,11 @@ export class EmailService {
         });
 
         const previewUrl = nodemailer.getTestMessageUrl(info) || undefined;
-        console.log(`✉️ Magic Reset Link Preview URL: ${previewUrl}`);
         return { sent: true, previewUrl };
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(`Failed to send magic reset link email to ${toEmail}:`, err);
-      return { sent: false };
+      return { sent: false, error: err.message };
     }
   }
 
@@ -79,6 +95,8 @@ export class EmailService {
    * Sends 6-Digit Email Verification Code
    */
   static async sendVerificationEmail(toEmail: string, name: string, otp: string): Promise<{ sent: boolean; previewUrl?: string }> {
+    const { transporter, user, pass } = this.getTransporter();
+
     const html = `
       <div style="font-family: Arial, sans-serif; background-color: #0B0F17; color: #F8FAFC; padding: 40px 20px; text-align: center;">
         <div style="max-width: 480px; margin: 0 auto; background: #0F172A; border: 1px solid #1E293B; border-radius: 20px; padding: 32px;">
@@ -96,9 +114,9 @@ export class EmailService {
     `;
 
     try {
-      if (process.env.SMTP_USER && process.env.SMTP_PASS) {
-        await this.transporter.sendMail({
-          from: `"Vyora Security" <${process.env.SMTP_USER}>`,
+      if (user && pass) {
+        await transporter.sendMail({
+          from: `"Vyora Security" <${user}>`,
           to: toEmail,
           subject: `${otp} is your Vyora Email Verification Code`,
           html,
