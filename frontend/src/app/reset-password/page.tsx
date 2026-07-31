@@ -8,7 +8,8 @@ import { API_BASE } from '@/lib/api';
 function ResetPasswordForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const emailParam = searchParams.get('email') || '';
+  const rawEmailParam = searchParams.get('email') || '';
+  const decodedEmailParam = decodeURIComponent(rawEmailParam);
 
   const [email, setEmail] = useState('');
   const [otp, setOtp] = useState('');
@@ -19,9 +20,9 @@ function ResetPasswordForm() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const savedEmail = emailParam || localStorage.getItem('vyora_reset_email') || '';
+    const savedEmail = decodedEmailParam || localStorage.getItem('vyora_reset_email') || '';
     setEmail(savedEmail);
-  }, [emailParam]);
+  }, [decodedEmailParam]);
 
   const hasMinLength = newPassword.length >= 12;
   const hasUppercase = /[A-Z]/.test(newPassword);

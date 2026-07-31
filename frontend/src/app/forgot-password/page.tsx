@@ -54,14 +54,14 @@ export default function ForgotPasswordPage() {
       fetchLogs();
 
       setTimeout(() => {
-        router.push(`/reset-password?email=${encodeURIComponent(emailLower)}`);
-      }, 1500);
+        router.push(`/reset-password?email=${emailLower}`);
+      }, 1200);
     } catch (err: any) {
       localStorage.setItem('vyora_reset_email', emailLower);
       setMessage('A 6-digit password reset OTP code has been sent directly to your email address.');
       setTimeout(() => {
-        router.push(`/reset-password?email=${encodeURIComponent(emailLower)}`);
-      }, 1500);
+        router.push(`/reset-password?email=${emailLower}`);
+      }, 1200);
     } finally {
       setLoading(false);
     }
