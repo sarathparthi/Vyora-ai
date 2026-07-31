@@ -70,13 +70,25 @@ export default function LoginPage() {
           return;
         }
 
-        const newUser = { name, email: emailLower, password, isVerified: true, createdAt: new Date().toISOString() };
+        // Save user as unverified initially
+        const newUser = { name, email: emailLower, password, isVerified: false, createdAt: new Date().toISOString() };
         registeredUsers.push(newUser);
         localStorage.setItem('vyora_registered_users', JSON.stringify(registeredUsers));
+        localStorage.setItem('vyora_verify_email', emailLower);
+
+        // Send verification OTP email
+        try {
+          await fetch(`${API_BASE}/auth/send-verify-otp`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: emailLower }),
+          });
+        } catch (_) {
+          // Non-fatal: redirect to verify page even if OTP send fails
+        }
 
         setDevAccounts((prev) => [...prev.filter((a) => a.email !== emailLower), { name, email: emailLower, password }]);
 
-        localStorage.setItem('vyora_verify_email', emailLower);
         router.push(`/verify-email?email=${encodeURIComponent(emailLower)}`);
         return;
       } else {
