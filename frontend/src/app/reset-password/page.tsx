@@ -82,15 +82,12 @@ function ResetPasswordForm() {
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        throw new Error(data.message || 'Password reset failed.');
+        setError(data.message || 'Invalid OTP or password reset failed. Please try again.');
+        setLoading(false);
+        return;
       }
 
-      setSuccess('Password reset successfully! Redirecting to sign in...');
-      setTimeout(() => {
-        router.push('/login');
-      }, 1500);
-    } catch (err: any) {
-      // Local fallback reset execution
+      // OTP validated by server — now update the password in localStorage
       const existingUsersStr = localStorage.getItem('vyora_registered_users') || '[]';
       let registeredUsers: any[] = [];
       try {
@@ -103,10 +100,15 @@ function ResetPasswordForm() {
         localStorage.setItem('vyora_registered_users', JSON.stringify(registeredUsers));
       }
 
+      // Clear any saved reset email
+      localStorage.removeItem('vyora_reset_email');
+
       setSuccess('Password reset successfully! Redirecting to sign in...');
       setTimeout(() => {
         router.push('/login');
       }, 1500);
+    } catch (err: any) {
+      setError('Network error. Please check your connection and try again.');
     } finally {
       setLoading(false);
     }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 import { addEmailLog } from '@/lib/emailLogsStore';
+import { storeOTP } from '@/lib/otpStore';
 
 export async function POST(req: NextRequest) {
   try {
@@ -13,6 +14,9 @@ export async function POST(req: NextRequest) {
 
     const emailLower = email.toLowerCase().trim();
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Store OTP server-side (10 minute expiry) so reset-password can validate it
+    storeOTP(emailLower, otp, 10 * 60 * 1000);
 
     const host = process.env.SMTP_HOST || 'smtp.gmail.com';
     const port = Number(process.env.SMTP_PORT) || 587;
@@ -30,7 +34,7 @@ export async function POST(req: NextRequest) {
           <div style="font-size: 32px; font-family: monospace; font-weight: bold; letter-spacing: 8px; color: #F87171; background: #1E293B; padding: 16px; border-radius: 12px; margin: 24px 0;">
             ${otp}
           </div>
-          <p style="font-size: 11px; color: #64748B;">This code expires in 10 minutes.</p>
+          <p style="font-size: 11px; color: #64748B;">This code expires in 10 minutes. Do not share it with anyone.</p>
         </div>
       </div>
     `;
@@ -63,7 +67,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({
           success: true,
           data: {
-            message: 'A 6-digit password reset OTP code has been sent directly to your email address.',
+            message: 'A 6-digit password reset OTP code has been sent to your email address.',
             email: emailLower,
           },
         });
@@ -76,10 +80,11 @@ export async function POST(req: NextRequest) {
           error: smtpErr.message,
         });
 
+        // OTP is still stored even if email failed — return it in dev mode
         return NextResponse.json({
           success: true,
           data: {
-            message: 'A 6-digit password reset OTP code has been generated.',
+            message: 'OTP generated (email delivery failed — use Dev Logs to retrieve it).',
             otpDemo: otp,
             email: emailLower,
             error: smtpErr.message,
@@ -87,17 +92,18 @@ export async function POST(req: NextRequest) {
         });
       }
     } else {
+      // No SMTP credentials — simulated mode
       addEmailLog({
         toEmail: emailLower,
         otp,
         status: 'SIMULATED',
-        smtpUser: 'None (SMTP_USER/SMTP_PASS missing in Vercel env)',
+        smtpUser: 'None (SMTP_USER/SMTP_PASS missing)',
       });
 
       return NextResponse.json({
         success: true,
         data: {
-          message: 'A 6-digit password reset OTP code has been generated.',
+          message: 'OTP generated (no SMTP configured — use Dev Logs to retrieve it).',
           otpDemo: otp,
           email: emailLower,
         },
