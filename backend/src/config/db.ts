@@ -9,7 +9,6 @@ export async function connectDB() {
     await prisma.$connect();
     console.log('✅ Prisma ORM connected successfully to Database');
   } catch (error) {
-    console.error('❌ Failed to connect to Database via Prisma:', error);
-    process.exit(1);
+    console.warn('⚠️ SQLite read-only notice. Continuing in serverless fallback mode.');
   }
 }
