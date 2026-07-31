@@ -4,6 +4,7 @@ const nextConfig = {
   images: {
     domains: ['images.unsplash.com', 'api.dicebear.com'],
   },
+  outputFileTracingRoot: require('path').join(__dirname, '../'),
 };
 
 module.exports = nextConfig;
