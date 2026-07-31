@@ -37,7 +37,7 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'HEALTHY', timestamp: new Date().toISOString(), service: 'Vyora Enterprise API Engine' });
 });
 
-// Developer Accounts JSON Endpoint
+// Developer Accounts JSON Endpoint (Public for Dev)
 app.get('/api/dev/accounts', (req, res) => {
   try {
     const filePath = path.join(process.cwd(), 'dev_accounts.json');
@@ -47,21 +47,21 @@ app.get('/api/dev/accounts', (req, res) => {
     }
     return res.json({ success: true, data: [] });
   } catch (err: any) {
-    return res.json({ success: false, data: [] });
+    return res.json({ success: true, data: [] });
   }
 });
 
-// Developer Email Dispatch Monitor Endpoint
+// Developer Email Dispatch Monitor Endpoint (Public for Dev)
 app.get('/api/dev/email-logs', (req, res) => {
   try {
     const logs = EmailLogger.getLogs();
     return res.json({ success: true, data: logs });
   } catch (err: any) {
-    return res.json({ success: false, data: [] });
+    return res.json({ success: true, data: [] });
   }
 });
 
-// Authentication Endpoints
+// Public Authentication Endpoints
 app.post('/api/auth/register', authRateLimiter, AuthController.register);
 app.post('/api/auth/verify-otp', authRateLimiter, AuthController.verifyOTP);
 app.post('/api/auth/login', authRateLimiter, AuthController.login);
@@ -69,34 +69,31 @@ app.post('/api/auth/forgot-password', authRateLimiter, AuthController.requestPas
 app.post('/api/auth/reset-password', authRateLimiter, AuthController.resetPassword);
 
 // Protected Routes (Require JWT)
-app.use('/api', authenticateJWT);
+app.get('/api/auth/me', authenticateJWT, AuthController.getProfile);
+app.get('/api/auth/sessions', authenticateJWT, AuthController.getActiveSessions);
+app.delete('/api/auth/sessions/:id', authenticateJWT, AuthController.revokeSession);
 
-// User Profile & Active Sessions
-app.get('/api/auth/me', AuthController.getProfile);
-app.get('/api/auth/sessions', AuthController.getActiveSessions);
-app.delete('/api/auth/sessions/:id', AuthController.revokeSession);
+// Transactions & Categories (Protected)
+app.get('/api/transactions', authenticateJWT, TransactionController.list);
+app.post('/api/transactions', authenticateJWT, TransactionController.create);
+app.delete('/api/transactions/:id', authenticateJWT, TransactionController.delete);
+app.get('/api/categories', authenticateJWT, TransactionController.getCategories);
 
-// Transactions & Categories
-app.get('/api/transactions', TransactionController.list);
-app.post('/api/transactions', TransactionController.create);
-app.delete('/api/transactions/:id', TransactionController.delete);
-app.get('/api/categories', TransactionController.getCategories);
+// Wallets & Accounts (Protected)
+app.get('/api/wallets', authenticateJWT, WalletController.list);
+app.post('/api/wallets', authenticateJWT, WalletController.create);
 
-// Wallets & Accounts
-app.get('/api/wallets', WalletController.list);
-app.post('/api/wallets', WalletController.create);
+// Budgets (Protected)
+app.get('/api/budgets', authenticateJWT, BudgetController.getMonthlyBudget);
+app.post('/api/budgets', authenticateJWT, BudgetController.setBudget);
 
-// Budgets
-app.get('/api/budgets', BudgetController.getMonthlyBudget);
-app.post('/api/budgets', BudgetController.setBudget);
+// Analytics (Protected)
+app.get('/api/analytics/dashboard', authenticateJWT, AnalyticsController.getDashboardOverview);
+app.get('/api/analytics/cashflow', authenticateJWT, AnalyticsController.getCashFlowTrends);
 
-// Analytics
-app.get('/api/analytics/dashboard', AnalyticsController.getDashboardOverview);
-app.get('/api/analytics/cashflow', AnalyticsController.getCashFlowTrends);
-
-// AI & Predictions
-app.post('/api/ai/chat', AIController.chat);
-app.get('/api/ai/predictions', AIController.getPredictions);
+// AI & Predictions (Protected)
+app.post('/api/ai/chat', authenticateJWT, AIController.chat);
+app.get('/api/ai/predictions', authenticateJWT, AIController.getPredictions);
 
 // Start Server
 async function startServer() {
