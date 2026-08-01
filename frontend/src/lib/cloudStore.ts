@@ -17,7 +17,7 @@ export interface DeviceSession {
 export interface RegisteredUser {
   name: string;
   email: string;
-  password: string;
+  password?: string;
   role: 'SUPER_ADMIN' | 'USER';
   status: 'ACTIVE' | 'SUSPENDED';
   isVerified: boolean;
@@ -47,9 +47,9 @@ const globalUsersStore = new Map<string, RegisteredUser>();
 const globalDataStore = new Map<string, UserAccountData>();
 const globalDevicesStore = new Map<string, DeviceSession[]>();
 
-// Seed default Super Admin Account
+// Seed Super Admin Account configuration (credentials loaded from environment variables)
 const ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'admin@vyoraai.in').toLowerCase().trim();
-const ADMIN_PASSWORD = process.env.SUPER_ADMIN_PASSWORD || 'Admin@12345';
+const ADMIN_PASSWORD = process.env.SUPER_ADMIN_PASSWORD || '';
 
 const defaultSuperAdmin: RegisteredUser = {
   name: 'Vyora Super Admin',

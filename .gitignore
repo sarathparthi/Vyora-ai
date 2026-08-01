@@ -14,7 +14,10 @@ dist/
 *.db-journal
 dev.db
 
-# Environment variables
+# Secrets & Local Accounts
+dev_accounts.json
+*.env
+*.env.*
 .env
 .env.local
 .env.development.local
