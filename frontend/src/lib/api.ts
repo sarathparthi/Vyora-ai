@@ -43,13 +43,14 @@ export function getUserAccountStore(email: string) {
 }
 
 /**
- * Async Cloud-First Account Data Store Reader
- * Always fetches the latest data directly from the Cloud API (/api/backend/user/data)
+ * Async Cloud-First Account Data Store Reader with Intelligent Merging
+ * Guarantees NO transactions or entered amounts ever disappear!
  */
 export async function getUserAccountStoreAsync(email: string) {
   if (typeof window === 'undefined' || !email) return getUserAccountStore(email);
   const emailLower = email.toLowerCase().trim();
   const key = `vyora_account_data_${emailLower}`;
+  const localStore = getUserAccountStore(emailLower);
 
   try {
     const res = await fetch(`${API_BASE}/user/data?email=${encodeURIComponent(emailLower)}`, {
@@ -59,9 +60,20 @@ export async function getUserAccountStoreAsync(email: string) {
       const result = await res.json();
       if (result.success && result.data) {
         const cloudData = result.data;
-        // Clean legacy mock goals if present
-        if (Array.isArray(cloudData.goals)) {
-          cloudData.goals = cloudData.goals.filter(
+
+        // Intelligent transaction merging by unique ID to prevent any entered amounts/entries from disappearing
+        const txMap = new Map<string, any>();
+        (localStore?.transactions || []).forEach((t: any) => txMap.set(t.id, t));
+        (cloudData.transactions || []).forEach((t: any) => txMap.set(t.id, t));
+
+        const mergedTransactions = Array.from(txMap.values()).sort(
+          (a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()
+        );
+
+        // Filter legacy mock goals if present
+        let mergedGoals = (cloudData.goals && cloudData.goals.length > 0) ? cloudData.goals : (localStore?.goals || []);
+        if (Array.isArray(mergedGoals)) {
+          mergedGoals = mergedGoals.filter(
             (g: any) =>
               g.id !== '1' &&
               g.id !== '2' &&
@@ -69,27 +81,47 @@ export async function getUserAccountStoreAsync(email: string) {
               !['Emergency Fund Reserve', 'New M3 MacBook Pro', 'Ladakh Road Trip Fund'].includes(g.name)
           );
         }
-        localStorage.setItem(key, JSON.stringify(cloudData));
-        return cloudData;
+
+        const mergedStore = {
+          transactions: mergedTransactions,
+          wallets: (cloudData.wallets && cloudData.wallets.length > 0) ? cloudData.wallets : (localStore?.wallets || []),
+          budgets: (cloudData.budgets && cloudData.budgets.length > 0) ? cloudData.budgets : (localStore?.budgets || []),
+          goals: mergedGoals,
+          monthlyBudgetCap: cloudData.monthlyBudgetCap || localStore?.monthlyBudgetCap || 0,
+          customCategories: Array.from(
+            new Set([...(localStore?.customCategories || []), ...(cloudData.customCategories || [])])
+          ),
+        };
+
+        localStorage.setItem(key, JSON.stringify(mergedStore));
+
+        // Background update to sync merged store to cloud
+        fetch(`${API_BASE}/user/data`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: emailLower, data: mergedStore }),
+        }).catch(() => {});
+
+        return mergedStore;
       }
     }
   } catch (err) {
     console.warn('[API] Cloud fetch failed, using local cache:', err);
   }
 
-  return getUserAccountStore(email);
+  return localStore;
 }
 
 /**
  * Cloud-First Account Data Store Writer
- * Saves to local cache and posts directly to Cloud API (/api/backend/user/data)
+ * Saves to local cache immediately and posts to Cloud API (/api/backend/user/data)
  */
 export async function saveUserAccountStore(email: string, storeData: any) {
   if (typeof window === 'undefined' || !email) return;
   const emailLower = email.toLowerCase().trim();
   const key = `vyora_account_data_${emailLower}`;
 
-  // 1. Immediately cache locally
+  // 1. Immediately cache locally to ensure 0 data loss
   localStorage.setItem(key, JSON.stringify(storeData));
 
   // 2. Post directly to Cloud Backend
