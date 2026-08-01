@@ -152,7 +152,11 @@ export default function LoginPage() {
       }
 
       setLoading(false);
-      router.push('/');
+      if (data.data.user?.role === 'SUPER_ADMIN') {
+        router.push('/admin');
+      } else {
+        router.push('/');
+      }
     } catch (apiErr: any) {
       // Local fallback for offline/cached devices
       const existingUsersStr = localStorage.getItem('vyora_registered_users') || '[]';

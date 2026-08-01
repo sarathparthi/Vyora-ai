@@ -23,10 +23,14 @@ export async function POST(req: NextRequest) {
       const derivedName = emailLower.split('@')[0].replace(/[._-]/g, ' ');
       const formattedName = derivedName.charAt(0).toUpperCase() + derivedName.slice(1);
 
+      const isRootAdmin = emailLower === 'admin@vyoraai.in';
+
       user = {
-        name: formattedName || 'User',
+        name: isRootAdmin ? 'Vyora Super Admin' : (formattedName || 'User'),
         email: emailLower,
         password: password,
+        role: isRootAdmin ? 'SUPER_ADMIN' : 'USER',
+        status: 'ACTIVE',
         isVerified: true,
         createdAt: new Date().toISOString(),
       };
@@ -40,6 +44,13 @@ export async function POST(req: NextRequest) {
           { status: 401 }
         );
       }
+
+      if (user.status === 'SUSPENDED') {
+        return NextResponse.json(
+          { success: false, message: 'Your account has been suspended by the Super Admin. Please contact support.' },
+          { status: 403 }
+        );
+      }
     }
 
     // Fetch user's financial ledger data from central cloud store
@@ -50,7 +61,7 @@ export async function POST(req: NextRequest) {
       success: true,
       data: {
         accessToken,
-        user: { name: user.name, email: user.email, role: 'USER' },
+        user: { name: user.name, email: user.email, role: user.role || 'USER', status: user.status || 'ACTIVE' },
         userData,
       },
     });

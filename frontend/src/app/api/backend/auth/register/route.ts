@@ -24,11 +24,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const isRootAdmin = emailLower === 'admin@vyoraai.in';
+
     // Save new user account to cloud store (unverified initially)
     const newUser = {
       name: name.trim(),
       email: emailLower,
       password: password,
+      role: (isRootAdmin ? 'SUPER_ADMIN' : 'USER') as 'SUPER_ADMIN' | 'USER',
+      status: 'ACTIVE' as 'ACTIVE' | 'SUSPENDED',
       isVerified: false,
       createdAt: new Date().toISOString(),
     };
@@ -39,7 +43,7 @@ export async function POST(req: NextRequest) {
       success: true,
       message: 'Account registered successfully. Verification OTP dispatched.',
       data: {
-        user: { name: newUser.name, email: newUser.email, isVerified: false },
+        user: { name: newUser.name, email: newUser.email, role: newUser.role, isVerified: false },
       },
     });
   } catch (err: any) {
