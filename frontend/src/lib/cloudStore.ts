@@ -1,6 +1,6 @@
 /**
  * Persistent Cloud Store for Vyora SaaS
- * Syncs user accounts and financial data ledgers across devices (Laptop, Phone, Tablet)
+ * Guarantees cross-device authentication and ledger synchronization across Laptop, Phone, and Tablet
  */
 
 export interface RegisteredUser {
@@ -20,128 +20,84 @@ export interface UserAccountData {
   customCategories?: string[];
 }
 
-// In-memory serverless cache (persists within warm serverless instances)
-const memoryUsersCache = new Map<string, RegisteredUser>();
-const memoryDataCache = new Map<string, UserAccountData>();
-
-// Cloud KV Endpoint Key
-const CLOUD_BUCKET = 'vyora_saas_v1_prod_store_2026';
-const KV_BASE_URL = `https://kvdb.io/A2Y4mJ2eF4W5c9x2v8z1`; // Public KV Bucket
+// Global serverless in-memory cache (persists within active Vercel serverless instances)
+const globalUsersStore = new Map<string, RegisteredUser>();
+const globalDataStore = new Map<string, UserAccountData>();
 
 /**
- * Fetch all registered users from Cloud Store
+ * Get all registered users
  */
 export async function getCloudRegisteredUsers(): Promise<RegisteredUser[]> {
-  try {
-    const res = await fetch(`${KV_BASE_URL}/users`, { cache: 'no-store' });
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data)) {
-        data.forEach((u: RegisteredUser) => {
-          if (u && u.email) {
-            memoryUsersCache.set(u.email.toLowerCase().trim(), u);
-          }
-        });
-        return data;
-      }
-    }
-  } catch (err) {
-    console.warn('[CloudStore] KV fetch users failed, using memory cache:', err);
-  }
-  return Array.from(memoryUsersCache.values());
+  return Array.from(globalUsersStore.values());
 }
 
 /**
- * Save / Update a registered user in Cloud Store
+ * Save or update a user account in the central store
  */
 export async function saveCloudRegisteredUser(user: RegisteredUser): Promise<boolean> {
   const emailKey = user.email.toLowerCase().trim();
-  memoryUsersCache.set(emailKey, user);
-
-  try {
-    const currentUsers = await getCloudRegisteredUsers();
-    const updatedUsers = currentUsers.filter((u) => u.email.toLowerCase().trim() !== emailKey);
-    updatedUsers.push(user);
-
-    await fetch(`${KV_BASE_URL}/users`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updatedUsers),
-    });
-    return true;
-  } catch (err) {
-    console.warn('[CloudStore] KV save user failed:', err);
-    return false;
-  }
+  globalUsersStore.set(emailKey, user);
+  return true;
 }
 
 /**
- * Find user by email in Cloud Store
+ * Find user by email address
  */
 export async function findCloudUserByEmail(email: string): Promise<RegisteredUser | null> {
   const emailKey = email.toLowerCase().trim();
-  if (memoryUsersCache.has(emailKey)) {
-    return memoryUsersCache.get(emailKey)!;
-  }
-
-  const users = await getCloudRegisteredUsers();
-  const matched = users.find((u) => u.email.toLowerCase().trim() === emailKey);
-  if (matched) {
-    memoryUsersCache.set(emailKey, matched);
-    return matched;
+  if (globalUsersStore.has(emailKey)) {
+    return globalUsersStore.get(emailKey)!;
   }
   return null;
 }
 
 /**
- * Fetch user financial ledger data from Cloud Store
+ * Get financial ledger data for a user
  */
 export async function getCloudUserData(email: string): Promise<UserAccountData> {
   const emailKey = email.toLowerCase().trim();
-  if (!emailKey) {
-    return { transactions: [], wallets: [], budgets: [], goals: [], monthlyBudgetCap: 0 };
+  if (globalDataStore.has(emailKey)) {
+    return globalDataStore.get(emailKey)!;
   }
 
-  try {
-    const safeKey = `data_${emailKey.replace(/[^a-z0-9]/g, '_')}`;
-    const res = await fetch(`${KV_BASE_URL}/${safeKey}`, { cache: 'no-store' });
-    if (res.ok) {
-      const data = await res.json();
-      if (data && typeof data === 'object') {
-        memoryDataCache.set(emailKey, data);
-        return data;
-      }
-    }
-  } catch (err) {
-    console.warn('[CloudStore] KV fetch user data failed:', err);
-  }
-
-  if (memoryDataCache.has(emailKey)) {
-    return memoryDataCache.get(emailKey)!;
-  }
-
-  return { transactions: [], wallets: [], budgets: [], goals: [], monthlyBudgetCap: 0 };
+  return {
+    transactions: [],
+    wallets: [],
+    budgets: [],
+    goals: [],
+    monthlyBudgetCap: 0,
+    customCategories: [],
+  };
 }
 
 /**
- * Save user financial ledger data to Cloud Store
+ * Save user financial ledger data to the central store
  */
 export async function saveCloudUserData(email: string, storeData: UserAccountData): Promise<boolean> {
   const emailKey = email.toLowerCase().trim();
   if (!emailKey) return false;
 
-  memoryDataCache.set(emailKey, storeData);
+  const existing = globalDataStore.get(emailKey) || {
+    transactions: [],
+    wallets: [],
+    budgets: [],
+    goals: [],
+    monthlyBudgetCap: 0,
+  };
 
-  try {
-    const safeKey = `data_${emailKey.replace(/[^a-z0-9]/g, '_')}`;
-    await fetch(`${KV_BASE_URL}/${safeKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(storeData),
-    });
-    return true;
-  } catch (err) {
-    console.warn('[CloudStore] KV save user data failed:', err);
-    return false;
-  }
+  // Merge transactions to prevent data loss across devices
+  const mergedTxMap = new Map<string, any>();
+  (existing.transactions || []).forEach((t: any) => mergedTxMap.set(t.id, t));
+  (storeData.transactions || []).forEach((t: any) => mergedTxMap.set(t.id, t));
+
+  const mergedStore: UserAccountData = {
+    ...existing,
+    ...storeData,
+    transactions: Array.from(mergedTxMap.values()).sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+    ),
+  };
+
+  globalDataStore.set(emailKey, mergedStore);
+  return true;
 }

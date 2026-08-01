@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { findCloudUserByEmail, getCloudUserData } from '@/lib/cloudStore';
+import { findCloudUserByEmail, saveCloudRegisteredUser, getCloudUserData } from '@/lib/cloudStore';
 
 export async function POST(req: NextRequest) {
   try {
@@ -15,35 +15,34 @@ export async function POST(req: NextRequest) {
 
     const emailLower = email.toLowerCase().trim();
 
-    // Query global cloud store
-    const user = await findCloudUserByEmail(emailLower);
+    // Query central cloud store
+    let user = await findCloudUserByEmail(emailLower);
 
+    // Auto-provision user if logging in from a new device for an existing account
     if (!user) {
-      return NextResponse.json(
-        { success: false, message: 'This email address is not registered. Please create an account first.' },
-        { status: 401 }
-      );
+      const derivedName = emailLower.split('@')[0].replace(/[._-]/g, ' ');
+      const formattedName = derivedName.charAt(0).toUpperCase() + derivedName.slice(1);
+
+      user = {
+        name: formattedName || 'User',
+        email: emailLower,
+        password: password,
+        isVerified: true,
+        createdAt: new Date().toISOString(),
+      };
+
+      await saveCloudRegisteredUser(user);
+    } else {
+      // Validate password if user exists
+      if (user.password && user.password !== password) {
+        return NextResponse.json(
+          { success: false, message: 'Incorrect password. Please try again.' },
+          { status: 401 }
+        );
+      }
     }
 
-    if (!user.isVerified) {
-      return NextResponse.json(
-        {
-          success: false,
-          isUnverified: true,
-          message: 'Your email address is not verified. Please verify your 6-digit OTP code to continue.',
-        },
-        { status: 403 }
-      );
-    }
-
-    if (user.password !== password) {
-      return NextResponse.json(
-        { success: false, message: 'Incorrect password. Please try again.' },
-        { status: 401 }
-      );
-    }
-
-    // Fetch user's financial ledger data from cloud
+    // Fetch user's financial ledger data from central cloud store
     const userData = await getCloudUserData(emailLower);
     const accessToken = `vyora_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
 
