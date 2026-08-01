@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Search, Plus, Download, ArrowDownLeft, ArrowUpRight, Receipt, Tag } from 'lucide-react';
-import { getCurrentUserEmail, getUserAccountStore, saveUserAccountStore } from '@/lib/api';
+import { Search, Plus, Download, ArrowDownLeft, ArrowUpRight, Receipt, Tag, RefreshCw } from 'lucide-react';
+import { getCurrentUserEmail, getUserAccountStore, getUserAccountStoreAsync, saveUserAccountStore } from '@/lib/api';
 
 const DEFAULT_CATEGORIES = [
   'Food & Dining',
@@ -24,6 +24,7 @@ export default function TransactionsPage() {
   const [categoriesList, setCategoriesList] = useState<string[]>(DEFAULT_CATEGORIES);
   const [userEmail, setUserEmail] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   // Form State
   const [desc, setDesc] = useState('');
@@ -34,19 +35,42 @@ export default function TransactionsPage() {
   const [customCategoryInput, setCustomCategoryInput] = useState('');
   const [walletName, setWalletName] = useState('Main Bank Account');
 
-  useEffect(() => {
+  const loadDataFromCloud = async () => {
     const email = getCurrentUserEmail();
     setUserEmail(email);
-    const store = getUserAccountStore(email);
-    if (store) {
-      if (store.transactions) {
-        setTransactions(store.transactions);
-      }
-      // Load saved custom categories if any
-      const savedCustom = store.customCategories || [];
-      const combined = Array.from(new Set([...DEFAULT_CATEGORIES, ...savedCustom]));
-      setCategoriesList(combined);
+    if (!email) return;
+
+    setSyncing(true);
+    // 1. Instant paint from local cache
+    const cached = getUserAccountStore(email);
+    if (cached && cached.transactions) {
+      setTransactions(cached.transactions);
+      const savedCustom = cached.customCategories || [];
+      setCategoriesList(Array.from(new Set([...DEFAULT_CATEGORIES, ...savedCustom])));
     }
+
+    // 2. Fetch fresh ledger data directly from Cloud API
+    const cloudStore = await getUserAccountStoreAsync(email);
+    if (cloudStore && cloudStore.transactions) {
+      setTransactions(cloudStore.transactions);
+      const savedCustom = cloudStore.customCategories || [];
+      setCategoriesList(Array.from(new Set([...DEFAULT_CATEGORIES, ...savedCustom])));
+    }
+    setSyncing(false);
+  };
+
+  useEffect(() => {
+    loadDataFromCloud();
+
+    // Auto-refresh when tab gains focus or every 10 seconds
+    const handleFocus = () => loadDataFromCloud();
+    window.addEventListener('focus', handleFocus);
+    const interval = setInterval(loadDataFromCloud, 10000);
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      clearInterval(interval);
+    };
   }, []);
 
   const handleCategorySelectChange = (val: string) => {
@@ -59,7 +83,7 @@ export default function TransactionsPage() {
     }
   };
 
-  const handleAdd = (e: React.FormEvent) => {
+  const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!desc || !amount) return;
 
@@ -73,7 +97,7 @@ export default function TransactionsPage() {
     const parsedAmount = parseFloat(amount);
 
     const newTx = {
-      id: `tx-${Date.now()}`,
+      id: `tx-${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       description: desc,
       category: finalCategory,
       wallet: walletName,
@@ -86,19 +110,17 @@ export default function TransactionsPage() {
     const updatedTransactions = [newTx, ...transactions];
     setTransactions(updatedTransactions);
 
-    // Save custom category to list if new
     let updatedCategories = categoriesList;
     if (!categoriesList.includes(finalCategory)) {
       updatedCategories = [...categoriesList, finalCategory];
       setCategoriesList(updatedCategories);
     }
 
-    // Save to user persistent store
+    // Save & push directly to Cloud Store
     const store = getUserAccountStore(userEmail) || {};
     store.transactions = updatedTransactions;
     store.customCategories = updatedCategories.filter((c) => !DEFAULT_CATEGORIES.includes(c));
 
-    // Update wallet balance
     if (store.wallets && store.wallets.length > 0) {
       const targetWallet = store.wallets.find((w: any) => w.name === walletName) || store.wallets[0];
       if (type === 'INCOME') {
@@ -108,7 +130,7 @@ export default function TransactionsPage() {
       }
     }
 
-    saveUserAccountStore(userEmail, store);
+    await saveUserAccountStore(userEmail, store);
 
     setDesc('');
     setAmount('');
@@ -143,12 +165,22 @@ export default function TransactionsPage() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Transactions Ledger</h1>
+          <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2">
+            Transactions Ledger
+            {syncing && <RefreshCw className="w-4 h-4 text-blue-400 animate-spin" />}
+          </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Manage, filter, and export all your income &amp; expense activity with custom categories.
+            Real-time multi-device cloud synchronized ledger in Indian Rupees (₹).
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={loadDataFromCloud}
+            className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-all border border-slate-700"
+            title="Refresh Cloud Ledger"
+          >
+            <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
+          </button>
           <button
             onClick={exportCSV}
             disabled={filtered.length === 0}
@@ -203,7 +235,7 @@ export default function TransactionsPage() {
             </div>
             <h3 className="text-base font-semibold text-white">No Transactions Recorded Yet</h3>
             <p className="text-xs text-slate-400 max-w-sm mx-auto">
-              Your account ledger is currently clean. Click the button below to record your first entry with a custom category!
+              Your account ledger is currently clean. Click the button below to record your first entry!
             </p>
             <button
               onClick={() => setShowAddModal(true)}
@@ -265,7 +297,7 @@ export default function TransactionsPage() {
         )}
       </div>
 
-      {/* Add Transaction Modal with Custom Category Creation */}
+      {/* Add Transaction Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="glass-card p-6 rounded-2xl w-full max-w-md space-y-4 border border-slate-700 shadow-2xl">
@@ -309,7 +341,7 @@ export default function TransactionsPage() {
                 </div>
               </div>
 
-              {/* Category Selector with Custom Option */}
+              {/* Category Selector */}
               <div>
                 <div className="flex justify-between items-center mb-1">
                   <label className="text-xs text-slate-400 font-medium">Category</label>
@@ -361,7 +393,7 @@ export default function TransactionsPage() {
                       </button>
                     </div>
                     <span className="text-[10px] text-blue-400 block">
-                      This custom category will be saved to your account.
+                      This custom category will be saved to your cloud account.
                     </span>
                   </div>
                 )}

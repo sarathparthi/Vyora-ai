@@ -16,7 +16,7 @@ import {
   Bot,
   AlertCircle
 } from 'lucide-react';
-import { getCurrentUserEmail, getUserAccountStore, saveUserAccountStore, getDaysInMonth } from '@/lib/api';
+import { getCurrentUserEmail, getUserAccountStore, getUserAccountStoreAsync, saveUserAccountStore, getDaysInMonth } from '@/lib/api';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 
 const MONTH_NAMES = [
@@ -36,7 +36,7 @@ export default function Dashboard() {
   const [storeData, setStoreData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  const loadAccountData = () => {
+  const loadAccountData = async () => {
     const email = getCurrentUserEmail();
     setUserEmail(email);
     const storedUser = localStorage.getItem('vyora_user');
@@ -47,13 +47,37 @@ export default function Dashboard() {
       } catch (e) {}
     }
 
-    const store = getUserAccountStore(email);
-    setStoreData(store);
-    setLoading(false);
+    if (!email) {
+      setLoading(false);
+      return;
+    }
+
+    // Fast initial paint from local cache
+    const initialStore = getUserAccountStore(email);
+    if (initialStore) {
+      setStoreData(initialStore);
+      setLoading(false);
+    }
+
+    // Fetch fresh cloud store
+    const cloudStore = await getUserAccountStoreAsync(email);
+    if (cloudStore) {
+      setStoreData(cloudStore);
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
     loadAccountData();
+
+    const handleFocus = () => loadAccountData();
+    window.addEventListener('focus', handleFocus);
+    const interval = setInterval(loadAccountData, 10000);
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      clearInterval(interval);
+    };
   }, [selectedMonth, selectedYear]);
 
   if (loading || !storeData) {

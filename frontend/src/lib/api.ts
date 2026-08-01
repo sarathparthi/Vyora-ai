@@ -12,6 +12,9 @@ export function getCurrentUserEmail(): string {
   return '';
 }
 
+/**
+ * Synchronous local reader for initial paint fallback
+ */
 export function getUserAccountStore(email: string) {
   if (typeof window === 'undefined' || !email) return null;
   const key = `vyora_account_data_${email.toLowerCase()}`;
@@ -21,16 +24,6 @@ export function getUserAccountStore(email: string) {
   if (existing) {
     try {
       storeObj = JSON.parse(existing);
-      // Clean legacy mock goals if present from old versions
-      if (Array.isArray(storeObj.goals)) {
-        storeObj.goals = storeObj.goals.filter(
-          (g: any) =>
-            g.id !== '1' &&
-            g.id !== '2' &&
-            g.id !== '3' &&
-            !['Emergency Fund Reserve', 'New M3 MacBook Pro', 'Ladakh Road Trip Fund'].includes(g.name)
-        );
-      }
     } catch (e) {}
   }
 
@@ -41,62 +34,74 @@ export function getUserAccountStore(email: string) {
       budgets: [],
       goals: [],
       monthlyBudgetCap: 0,
+      customCategories: [],
     };
     localStorage.setItem(key, JSON.stringify(storeObj));
   }
 
-  // Trigger background cloud fetch to ensure cross-device sync
-  syncUserDataFromCloud(email);
-
   return storeObj;
 }
 
-export function saveUserAccountStore(email: string, storeData: any) {
-  if (typeof window === 'undefined' || !email) return;
-  const emailLower = email.toLowerCase().trim();
-  const key = `vyora_account_data_${emailLower}`;
-
-  // 1. Save to local browser cache
-  localStorage.setItem(key, JSON.stringify(storeData));
-
-  // 2. Sync to central cloud store asynchronously for cross-device persistence
-  fetch(`${API_BASE}/user/data`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: emailLower, data: storeData }),
-  }).catch((err) => {
-    console.warn('[API] Cloud user data sync failed:', err);
-  });
-}
-
 /**
- * Background Cloud Sync Helper
+ * Async Cloud-First Account Data Store Reader
+ * Always fetches the latest data directly from the Cloud API (/api/backend/user/data)
  */
-
-async function syncUserDataFromCloud(email: string) {
-  if (typeof window === 'undefined' || !email) return;
+export async function getUserAccountStoreAsync(email: string) {
+  if (typeof window === 'undefined' || !email) return getUserAccountStore(email);
   const emailLower = email.toLowerCase().trim();
   const key = `vyora_account_data_${emailLower}`;
 
   try {
-    const res = await fetch(`${API_BASE}/user/data?email=${encodeURIComponent(emailLower)}`);
+    const res = await fetch(`${API_BASE}/user/data?email=${encodeURIComponent(emailLower)}`, {
+      cache: 'no-store',
+    });
     if (res.ok) {
       const result = await res.json();
       if (result.success && result.data) {
         const cloudData = result.data;
-        const localStr = localStorage.getItem(key);
-        const localData = localStr ? JSON.parse(localStr) : null;
-
-        // If cloud has transactions/data, update local cache
-        if (
-          !localData ||
-          (cloudData.transactions && cloudData.transactions.length >= (localData.transactions?.length || 0))
-        ) {
-          localStorage.setItem(key, JSON.stringify(cloudData));
+        // Clean legacy mock goals if present
+        if (Array.isArray(cloudData.goals)) {
+          cloudData.goals = cloudData.goals.filter(
+            (g: any) =>
+              g.id !== '1' &&
+              g.id !== '2' &&
+              g.id !== '3' &&
+              !['Emergency Fund Reserve', 'New M3 MacBook Pro', 'Ladakh Road Trip Fund'].includes(g.name)
+          );
         }
+        localStorage.setItem(key, JSON.stringify(cloudData));
+        return cloudData;
       }
     }
-  } catch (_) {}
+  } catch (err) {
+    console.warn('[API] Cloud fetch failed, using local cache:', err);
+  }
+
+  return getUserAccountStore(email);
+}
+
+/**
+ * Cloud-First Account Data Store Writer
+ * Saves to local cache and posts directly to Cloud API (/api/backend/user/data)
+ */
+export async function saveUserAccountStore(email: string, storeData: any) {
+  if (typeof window === 'undefined' || !email) return;
+  const emailLower = email.toLowerCase().trim();
+  const key = `vyora_account_data_${emailLower}`;
+
+  // 1. Immediately cache locally
+  localStorage.setItem(key, JSON.stringify(storeData));
+
+  // 2. Post directly to Cloud Backend
+  try {
+    await fetch(`${API_BASE}/user/data`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: emailLower, data: storeData }),
+    });
+  } catch (err) {
+    console.warn('[API] Save user data to cloud failed:', err);
+  }
 }
 
 export function getDaysInMonth(year: number, month: number): number {
