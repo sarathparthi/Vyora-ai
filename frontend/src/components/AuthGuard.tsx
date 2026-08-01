@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Sidebar } from './Sidebar';
 import { Navbar } from './Navbar';
+import { MobileBottomNav } from './MobileBottomNav';
 
 const PUBLIC_AUTH_ROUTES = ['/login', '/register', '/verify-email', '/forgot-password', '/reset-password'];
 
@@ -43,9 +44,10 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     <>
       <Sidebar mobileOpen={mobileMenuOpen} onCloseMobile={() => setMobileMenuOpen(false)} />
       <Navbar onToggleMobileMenu={() => setMobileMenuOpen(!mobileMenuOpen)} />
-      <main className="pl-0 lg:pl-64 pt-16 min-h-screen transition-all duration-300">
-        <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6 sm:space-y-8">{children}</div>
+      <main className="pl-0 lg:pl-64 pt-16 pb-24 lg:pb-8 min-h-screen transition-all duration-300">
+        <div className="p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-5 sm:space-y-8">{children}</div>
       </main>
+      <MobileBottomNav onOpenMobileMenu={() => setMobileMenuOpen(true)} />
     </>
   );
 }
