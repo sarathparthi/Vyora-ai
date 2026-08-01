@@ -1,5 +1,7 @@
 'use client';
 
+// CI/CD Trigger: Vyora AI Personal Finance Suite v1.0.0 - Production Build Deployment
+
 import { useEffect, useState } from 'react';
 import { 
   Wallet, 
