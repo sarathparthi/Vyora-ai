@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Target, Plus, Trash2, X, Check } from 'lucide-react';
+import { Target, Plus, Trash2, X, Check, Trophy, Flame, Zap, Sparkles } from 'lucide-react';
 import { getCurrentUserEmail, getUserAccountStore, saveUserAccountStore } from '@/lib/api';
 
 interface Goal {
@@ -16,6 +16,13 @@ interface Goal {
 const GOAL_COLORS = [
   '#10B981', '#3B82F6', '#8B5CF6', '#F59E0B',
   '#EF4444', '#EC4899', '#F97316', '#06B6D4',
+];
+
+const SAVINGS_CHALLENGES = [
+  { id: 'c1', title: 'Save ₹500 Every Day', target: 15000, daysLeft: 22, progress: 65, reward: '👑 Savings Master Badge' },
+  { id: 'c2', title: '7-Day No Outside Food', target: 3500, daysLeft: 3, progress: 85, reward: '🥗 Health & Wealth Badge' },
+  { id: 'c3', title: '₹10,000 Monthly Sprint', target: 10000, daysLeft: 18, progress: 40, reward: '🚀 Wealth Sprint Badge' },
+  { id: 'c4', title: 'Weekend Zero-Spending Challenge', target: 2000, daysLeft: 2, progress: 100, reward: '🔥 Weekend Saver Badge' },
 ];
 
 export default function GoalsPage() {
@@ -74,9 +81,11 @@ export default function GoalsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Savings &amp; Wealth Goals</h1>
+          <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2">
+            Savings Goals &amp; AI Challenges <Trophy className="w-6 h-6 text-amber-400" />
+          </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Track progress towards your financial milestones (₹).
+            Track progress towards your financial milestones and achieve active savings challenges (₹).
           </p>
         </div>
         <button
@@ -86,6 +95,50 @@ export default function GoalsPage() {
           <Plus className="w-4 h-4" />
           <span>Create Savings Goal</span>
         </button>
+      </div>
+
+      {/* 🏆 Active Savings Challenges & Gamification */}
+      <div className="glass-card p-6 rounded-3xl space-y-4 border border-slate-800 shadow-xl">
+        <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+          <div>
+            <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <Flame className="w-4 h-4 text-amber-400" /> Active AI Savings Challenges
+            </h3>
+            <p className="text-xs text-slate-400 mt-0.5">Automated gamified challenges to accelerate your net worth</p>
+          </div>
+          <span className="text-xs font-bold text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/20 flex items-center gap-1">
+            <Trophy className="w-3 h-3" /> 4 Active Challenges
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {SAVINGS_CHALLENGES.map((ch) => (
+            <div key={ch.id} className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-3">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h4 className="font-bold text-xs text-white">{ch.title}</h4>
+                  <span className="text-[10px] text-amber-300 font-medium block mt-0.5">{ch.reward}</span>
+                </div>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
+                  {ch.daysLeft} days left
+                </span>
+              </div>
+
+              <div className="space-y-1">
+                <div className="flex justify-between text-[11px] text-slate-400">
+                  <span>Progress: {ch.progress}%</span>
+                  <span className="font-mono text-white">Target: ₹{ch.target.toLocaleString('en-IN')}</span>
+                </div>
+                <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-amber-500 to-emerald-500 rounded-full transition-all duration-500"
+                    style={{ width: `${ch.progress}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Empty state */}

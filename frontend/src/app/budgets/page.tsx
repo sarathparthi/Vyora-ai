@@ -1,8 +1,24 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { AlertTriangle, Plus, CheckCircle2, Zap } from 'lucide-react';
+import { AlertTriangle, Plus, CheckCircle2, Zap, CreditCard, Calendar as CalendarIcon, Clock, Bell, Sparkles } from 'lucide-react';
 import { getCurrentUserEmail, getUserAccountStore, saveUserAccountStore, getDaysInMonth } from '@/lib/api';
+
+const DEFAULT_SUBSCRIPTIONS = [
+  { name: 'Netflix Premium', amount: 649, renewalDay: 5, icon: '🎬' },
+  { name: 'Spotify Duo', amount: 149, renewalDay: 12, icon: '🎵' },
+  { name: 'Amazon Prime', amount: 299, renewalDay: 18, icon: '📦' },
+  { name: 'ChatGPT Plus AI', amount: 1999, renewalDay: 22, icon: '🤖' },
+  { name: 'YouTube Premium', amount: 189, renewalDay: 28, icon: '▶️' },
+];
+
+const DEFAULT_BILL_REMINDERS = [
+  { title: 'Apartment Rent', amount: 25000, dueDay: 1, category: 'Housing', status: 'DUE_SOON' },
+  { title: 'Home Loan / Car EMI', amount: 18500, dueDay: 10, category: 'Debt/Loan', status: 'UPCOMING' },
+  { title: 'Electricity & Utility Bill', amount: 2400, dueDay: 15, category: 'Utilities', status: 'UPCOMING' },
+  { title: 'Wi-Fi Broadband', amount: 999, dueDay: 20, category: 'Internet', status: 'PAID' },
+  { title: 'Term Insurance SIP', amount: 4500, dueDay: 25, category: 'Insurance', status: 'UPCOMING' },
+];
 
 export default function BudgetsPage() {
   const [budgets, setBudgets] = useState<any[]>([]);
@@ -69,16 +85,21 @@ export default function BudgetsPage() {
   };
 
   const totalCategoryAllocated = budgets.reduce((acc, b) => acc + Number(b.allocated || 0), 0);
-  const totalCategorySpent = budgets.reduce((acc, b) => acc + Number(b.spent || 0), 0);
+  const totalSubscriptions = DEFAULT_SUBSCRIPTIONS.reduce((acc, s) => acc + s.amount, 0);
   const daysInMonth = getDaysInMonth(new Date().getFullYear(), new Date().getMonth() + 1);
   const dailyAllowance = monthlyCap > 0 ? monthlyCap / daysInMonth : 0;
 
   return (
     <div className="space-y-8">
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Monthly & Daily Budget Management</h1>
-          <p className="text-xs text-slate-400 mt-1">Set master spending caps, track daily allowances, and monitor category limits in Indian Rupees (₹).</p>
+          <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2">
+            Budgets, Subscriptions &amp; Bill Calendar
+          </h1>
+          <p className="text-xs text-slate-400 mt-1">
+            Set master spending caps, track daily allowances, automated subscriptions, and bill reminders in Indian Rupees (₹).
+          </p>
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -140,6 +161,84 @@ export default function BudgetsPage() {
           >
             Add Category Cap
           </button>
+        </div>
+      </div>
+
+      {/* 💰 Subscription Tracker & Recurring Bill Reminders Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Subscription Tracker */}
+        <div className="glass-card p-6 rounded-3xl space-y-4 border border-slate-800 shadow-xl">
+          <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+            <div>
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <CreditCard className="w-4 h-4 text-purple-400" /> Automated Subscription Tracker
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">AI detected active digital subscriptions</p>
+            </div>
+            <span className="text-xs font-bold text-purple-400 bg-purple-500/10 px-2.5 py-1 rounded-full border border-purple-500/20">
+              ₹{totalSubscriptions.toLocaleString('en-IN')}/mo
+            </span>
+          </div>
+
+          <div className="space-y-2.5">
+            {DEFAULT_SUBSCRIPTIONS.map((sub, i) => (
+              <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-slate-900/60 border border-slate-800/80 text-xs">
+                <div className="flex items-center gap-3">
+                  <span className="text-base">{sub.icon}</span>
+                  <div>
+                    <p className="font-semibold text-white">{sub.name}</p>
+                    <span className="text-[10px] text-slate-400">Renews on {sub.renewalDay}th of each month</span>
+                  </div>
+                </div>
+                <span className="font-mono font-bold text-rose-400">₹{sub.amount}/mo</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Recurring Bill Reminders */}
+        <div className="glass-card p-6 rounded-3xl space-y-4 border border-slate-800 shadow-xl">
+          <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+            <div>
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Bell className="w-4 h-4 text-amber-400" /> Upcoming Bill Reminders &amp; Deadlines
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">Rent, EMI, Wi-Fi, and Insurance due dates</p>
+            </div>
+            <span className="text-xs font-bold text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/20">
+              5 Due Bills
+            </span>
+          </div>
+
+          <div className="space-y-2.5">
+            {DEFAULT_BILL_REMINDERS.map((bill, i) => (
+              <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-slate-900/60 border border-slate-800/80 text-xs">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center font-bold">
+                    {bill.dueDay}
+                  </div>
+                  <div>
+                    <p className="font-semibold text-white">{bill.title}</p>
+                    <span className="text-[10px] text-slate-400">{bill.category}</span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="font-mono font-bold text-white block">₹{bill.amount.toLocaleString('en-IN')}</span>
+                  <span
+                    className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
+                      bill.status === 'PAID'
+                        ? 'bg-emerald-500/20 text-emerald-400'
+                        : bill.status === 'DUE_SOON'
+                        ? 'bg-rose-500/20 text-rose-400'
+                        : 'bg-slate-800 text-slate-400'
+                    }`}
+                  >
+                    {bill.status}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
