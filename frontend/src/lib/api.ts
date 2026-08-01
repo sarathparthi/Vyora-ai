@@ -17,12 +17,13 @@ export function getUserAccountStore(email: string) {
   const key = `vyora_account_data_${email.toLowerCase()}`;
   const existing = localStorage.getItem(key);
 
+  let storeObj = null;
   if (existing) {
     try {
-      const parsed = JSON.parse(existing);
+      storeObj = JSON.parse(existing);
       // Clean legacy mock goals if present from old versions
-      if (Array.isArray(parsed.goals)) {
-        parsed.goals = parsed.goals.filter(
+      if (Array.isArray(storeObj.goals)) {
+        storeObj.goals = storeObj.goals.filter(
           (g: any) =>
             g.id !== '1' &&
             g.id !== '2' &&
@@ -30,27 +31,72 @@ export function getUserAccountStore(email: string) {
             !['Emergency Fund Reserve', 'New M3 MacBook Pro', 'Ladakh Road Trip Fund'].includes(g.name)
         );
       }
-      return parsed;
     } catch (e) {}
   }
 
-  // BRAND NEW USER: Starts 100% clean & empty (Zero pre-filled items)
-  const freshEmptyStore = {
-    transactions: [],
-    wallets: [],
-    budgets: [],
-    goals: [],
-    monthlyBudgetCap: 0,
-  };
+  if (!storeObj) {
+    storeObj = {
+      transactions: [],
+      wallets: [],
+      budgets: [],
+      goals: [],
+      monthlyBudgetCap: 0,
+    };
+    localStorage.setItem(key, JSON.stringify(storeObj));
+  }
 
-  localStorage.setItem(key, JSON.stringify(freshEmptyStore));
-  return freshEmptyStore;
+  // Trigger background cloud fetch to ensure cross-device sync
+  syncUserDataFromCloud(email);
+
+  return storeObj;
 }
 
 export function saveUserAccountStore(email: string, storeData: any) {
   if (typeof window === 'undefined' || !email) return;
-  const key = `vyora_account_data_${email.toLowerCase()}`;
+  const emailLower = email.toLowerCase().trim();
+  const key = `vyora_account_data_${emailLower}`;
+
+  // 1. Save to local browser cache
   localStorage.setItem(key, JSON.stringify(storeData));
+
+  // 2. Sync to central cloud store asynchronously for cross-device persistence
+  fetch(`${API_BASE}/user/data`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: emailLower, data: storeData }),
+  }).catch((err) => {
+    console.warn('[API] Cloud user data sync failed:', err);
+  });
+}
+
+/**
+ * Background Cloud Sync Helper
+ */
+
+async function syncUserDataFromCloud(email: string) {
+  if (typeof window === 'undefined' || !email) return;
+  const emailLower = email.toLowerCase().trim();
+  const key = `vyora_account_data_${emailLower}`;
+
+  try {
+    const res = await fetch(`${API_BASE}/user/data?email=${encodeURIComponent(emailLower)}`);
+    if (res.ok) {
+      const result = await res.json();
+      if (result.success && result.data) {
+        const cloudData = result.data;
+        const localStr = localStorage.getItem(key);
+        const localData = localStr ? JSON.parse(localStr) : null;
+
+        // If cloud has transactions/data, update local cache
+        if (
+          !localData ||
+          (cloudData.transactions && cloudData.transactions.length >= (localData.transactions?.length || 0))
+        ) {
+          localStorage.setItem(key, JSON.stringify(cloudData));
+        }
+      }
+    }
+  } catch (_) {}
 }
 
 export function getDaysInMonth(year: number, month: number): number {

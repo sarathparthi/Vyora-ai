@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyOTP } from '@/lib/otpStore';
+import { findCloudUserByEmail, saveCloudRegisteredUser } from '@/lib/cloudStore';
 
-// Minimum password complexity check (mirrors the frontend rules)
 function isPasswordValid(password: string): boolean {
   return (
     password.length >= 12 &&
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Validate OTP against the server-side store
+    // Validate OTP
     const result = verifyOTP(email, otp);
 
     if (!result.valid) {
@@ -52,8 +52,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // OTP is valid — the frontend localStorage layer handles the actual password update.
-    // This response tells the frontend the OTP was verified successfully.
+    // Update user password in global cloud store
+    const user = await findCloudUserByEmail(email);
+    if (user) {
+      user.password = newPassword;
+      await saveCloudRegisteredUser(user);
+    }
+
     return NextResponse.json({
       success: true,
       message: 'OTP verified. Password reset successfully — please sign in with your new password.',

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyOTP } from '@/lib/otpStore';
+import { findCloudUserByEmail, saveCloudRegisteredUser } from '@/lib/cloudStore';
 
 export async function POST(req: NextRequest) {
   try {
@@ -20,19 +21,26 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Validate against the server-side OTP store (keyed with verify_ prefix)
+    // Validate against server-side OTP store
     const result = verifyOTP(`verify_${email.toLowerCase().trim()}`, otp);
 
     if (!result.valid) {
       return NextResponse.json(
-        { success: false, message: result.reason || 'Invalid or expired OTP.' },
+        { success: false, message: result.reason || 'Invalid or expired OTP code.' },
         { status: 401 }
       );
     }
 
+    // Mark user as verified in global cloud store
+    const user = await findCloudUserByEmail(email);
+    if (user) {
+      user.isVerified = true;
+      await saveCloudRegisteredUser(user);
+    }
+
     return NextResponse.json({
       success: true,
-      message: 'Email verified successfully! You can now sign in.',
+      message: 'Email verified successfully! You can now sign in on any device.',
     });
   } catch (err: any) {
     return NextResponse.json({ success: false, message: err.message }, { status: 500 });

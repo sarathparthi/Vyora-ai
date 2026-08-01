@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Sparkles, ShieldCheck, ArrowRight, Lock, Mail, User, AlertCircle } from 'lucide-react';
-import { API_BASE } from '@/lib/api';
+import { API_BASE, saveUserAccountStore } from '@/lib/api';
 
 function setAuthCookie(token: string) {
   const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toUTCString();
@@ -41,90 +41,164 @@ export default function LoginPage() {
 
     // ── REGISTER ──────────────────────────────────────────────────
     if (isRegister) {
+      try {
+        const res = await fetch(`${API_BASE}/auth/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: name.trim(), email: emailLower, password }),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok || !data.success) {
+          setError(data.message || 'Registration failed. Please try again.');
+          setLoading(false);
+          return;
+        }
+
+        // Save local reference for verification step
+        localStorage.setItem('vyora_verify_email', emailLower);
+
+        // Also update local registered users cache
+        const existingUsersStr = localStorage.getItem('vyora_registered_users') || '[]';
+        let registeredUsers: any[] = [];
+        try { registeredUsers = JSON.parse(existingUsersStr); } catch (_) {}
+        if (!registeredUsers.some((u: any) => u.email === emailLower)) {
+          registeredUsers.push({ name: name.trim(), email: emailLower, password, isVerified: false });
+          localStorage.setItem('vyora_registered_users', JSON.stringify(registeredUsers));
+        }
+
+        // Send OTP email
+        try {
+          await fetch(`${API_BASE}/auth/send-verify-otp`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: emailLower }),
+          });
+        } catch (_) {}
+
+        setLoading(false);
+        router.push(`/verify-email?email=${encodeURIComponent(emailLower)}`);
+        return;
+      } catch (apiErr: any) {
+        // Fallback local registration
+        const existingUsersStr = localStorage.getItem('vyora_registered_users') || '[]';
+        let registeredUsers: any[] = [];
+        try { registeredUsers = JSON.parse(existingUsersStr); } catch (_) {}
+        if (registeredUsers.some((u: any) => u.email === emailLower)) {
+          setError('An account with this email address already exists.');
+          setLoading(false);
+          return;
+        }
+
+        registeredUsers.push({ name: name.trim(), email: emailLower, password, isVerified: false });
+        localStorage.setItem('vyora_registered_users', JSON.stringify(registeredUsers));
+        localStorage.setItem('vyora_verify_email', emailLower);
+
+        try {
+          await fetch(`${API_BASE}/auth/send-verify-otp`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: emailLower }),
+          });
+        } catch (_) {}
+
+        setLoading(false);
+        router.push(`/verify-email?email=${encodeURIComponent(emailLower)}`);
+        return;
+      }
+    }
+
+    // ── LOGIN ─────────────────────────────────────────────────────
+    try {
+      const res = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: emailLower, password }),
+      });
+
+      const data = await res.json();
+
+      if (res.status === 403 || data.isUnverified) {
+        // Unverified email → Send OTP and redirect
+        try {
+          await fetch(`${API_BASE}/auth/send-verify-otp`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: emailLower }),
+          });
+        } catch (_) {}
+        localStorage.setItem('vyora_verify_email', emailLower);
+        setError('Your email is not verified. A 6-digit OTP code has been sent to your email.');
+        setLoading(false);
+        setTimeout(() => router.push(`/verify-email?email=${encodeURIComponent(emailLower)}`), 1200);
+        return;
+      }
+
+      if (!res.ok || !data.success) {
+        // Try local fallback if server returned 401
+        throw new Error(data.message || 'Invalid email or password.');
+      }
+
+      // ✅ Authenticated from Cloud Store across all devices!
+      const tok = data.data.accessToken || `vyora_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+      localStorage.setItem('vyora_token', tok);
+      localStorage.setItem('vyora_user', JSON.stringify(data.data.user));
+      setAuthCookie(tok);
+
+      // Sync fetched user ledger data to local store
+      if (data.data.userData) {
+        saveUserAccountStore(emailLower, data.data.userData);
+      }
+
+      setLoading(false);
+      router.push('/');
+    } catch (apiErr: any) {
+      // Local fallback for offline/cached devices
       const existingUsersStr = localStorage.getItem('vyora_registered_users') || '[]';
       let registeredUsers: any[] = [];
       try { registeredUsers = JSON.parse(existingUsersStr); } catch (_) {}
 
-      if (registeredUsers.some((u: any) => u.email === emailLower)) {
-        setError('An account with this email address already exists.');
+      const matchedUser = registeredUsers.find((u: any) => u.email === emailLower);
+
+      if (!matchedUser) {
+        setError(apiErr.message || 'This email address is not registered. Please create an account first.');
         setLoading(false);
         return;
       }
 
-      // Save as unverified — user must verify email before they can log in
-      const newUser = {
-        name: name.trim(),
-        email: emailLower,
-        password,
-        isVerified: false,
-        createdAt: new Date().toISOString(),
-      };
-      registeredUsers.push(newUser);
-      localStorage.setItem('vyora_registered_users', JSON.stringify(registeredUsers));
-      localStorage.setItem('vyora_verify_email', emailLower);
-
-      // Send verification OTP
-      try {
-        await fetch(`${API_BASE}/auth/send-verify-otp`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: emailLower }),
-        });
-      } catch (_) {
-        // Non-fatal: OTP email failure doesn't block the flow
+      if (!matchedUser.isVerified) {
+        try {
+          await fetch(`${API_BASE}/auth/send-verify-otp`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: emailLower }),
+          });
+        } catch (_) {}
+        localStorage.setItem('vyora_verify_email', emailLower);
+        setError('Your email is not verified. Redirecting to verification...');
+        setLoading(false);
+        setTimeout(() => router.push(`/verify-email?email=${encodeURIComponent(emailLower)}`), 1200);
+        return;
       }
 
+      if (matchedUser.password !== password) {
+        setError('Incorrect password. Please try again.');
+        setLoading(false);
+        return;
+      }
+
+      const tok = `vyora_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+      localStorage.setItem('vyora_token', tok);
+      localStorage.setItem('vyora_user', JSON.stringify({
+        name: matchedUser.name,
+        email: matchedUser.email,
+        role: 'USER',
+      }));
+      setAuthCookie(tok);
       setLoading(false);
-      router.push(`/verify-email?email=${encodeURIComponent(emailLower)}`);
-      return;
+      router.push('/');
     }
-
-    // ── LOGIN ─────────────────────────────────────────────────────
-    const existingUsersStr = localStorage.getItem('vyora_registered_users') || '[]';
-    let registeredUsers: any[] = [];
-    try { registeredUsers = JSON.parse(existingUsersStr); } catch (_) {}
-
-    const matchedUser = registeredUsers.find((u: any) => u.email === emailLower);
-
-    if (!matchedUser) {
-      setError('No account found with this email address. Please register first.');
-      setLoading(false);
-      return;
-    }
-
-    if (!matchedUser.isVerified) {
-      // Resend OTP and redirect to verify
-      try {
-        await fetch(`${API_BASE}/auth/send-verify-otp`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: emailLower }),
-        });
-      } catch (_) {}
-      localStorage.setItem('vyora_verify_email', emailLower);
-      setError('Your email is not verified. A new OTP has been sent — please verify your email first.');
-      setLoading(false);
-      setTimeout(() => router.push(`/verify-email?email=${encodeURIComponent(emailLower)}`), 1500);
-      return;
-    }
-
-    if (matchedUser.password !== password) {
-      setError('Incorrect password. Please try again.');
-      setLoading(false);
-      return;
-    }
-
-    // ✅ Authenticated
-    const tok = `vyora_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
-    localStorage.setItem('vyora_token', tok);
-    localStorage.setItem('vyora_user', JSON.stringify({
-      name: matchedUser.name,
-      email: matchedUser.email,
-      role: 'USER',
-    }));
-    setAuthCookie(tok);
-    setLoading(false);
-    router.push('/');
   };
 
   return (
@@ -152,8 +226,8 @@ export default function LoginPage() {
             </h2>
             <p className="text-xs text-slate-400 mt-0.5">
               {isRegister
-                ? 'Sign up to start tracking your daily budget.'
-                : 'Sign in to access your personal dashboard.'}
+                ? 'Sign up to start tracking your daily budget across all your devices.'
+                : 'Sign in to access your synchronized personal financial workspace.'}
             </p>
           </div>
 
@@ -229,7 +303,7 @@ export default function LoginPage() {
               disabled={loading}
               className="w-full py-3 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white text-xs font-semibold shadow-xl shadow-blue-600/25 flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-50"
             >
-              <span>{loading ? 'Please wait...' : isRegister ? 'Create Account' : 'Sign In'}</span>
+              <span>{loading ? 'Authenticating...' : isRegister ? 'Create Account' : 'Sign In'}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
@@ -247,7 +321,7 @@ export default function LoginPage() {
 
         <div className="flex items-center justify-center gap-2 text-[11px] text-slate-500">
           <ShieldCheck className="w-4 h-4 text-emerald-400" />
-          <span>Email Verified Accounts Only • Strict Password Access Control</span>
+          <span>Cross-Device Cloud Sync Enabled • Email OTP Security</span>
         </div>
       </div>
     </div>
