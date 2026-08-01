@@ -1,6 +1,6 @@
 'use client';
 
-import { Search, Menu, LogOut, ShieldCheck, Plus } from 'lucide-react';
+import { Search, Menu, LogOut, ShieldCheck, Plus, Linkedin } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
@@ -49,10 +49,21 @@ export function Navbar({ onToggleMobileMenu, onOpenAddModal }: NavbarProps) {
 
       {/* Right Controls */}
       <div className="flex items-center gap-2 sm:gap-4 ml-2">
-        {/* Security Indicator (Hidden on small mobile) */}
-        <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-medium">
+        {/* Developer Credit Link */}
+        <a
+          href="https://www.linkedin.com/in/sarath-p-a11s/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/20 text-xs font-semibold transition-all"
+        >
+          <Linkedin className="w-3.5 h-3.5 text-blue-400" />
+          <span>Dev: Sarath P</span>
+        </a>
+
+        {/* Security Indicator */}
+        <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-medium">
           <ShieldCheck className="w-3.5 h-3.5" />
-          <span>Argon2 Encrypted</span>
+          <span>Encrypted</span>
         </div>
 
         {/* Currency Pill */}
@@ -60,7 +71,7 @@ export function Navbar({ onToggleMobileMenu, onOpenAddModal }: NavbarProps) {
           INR (₹)
         </div>
 
-        {/* Quick Add Action Button (Icon only on tiny screens) */}
+        {/* Quick Add Action Button */}
         <button
           onClick={onOpenAddModal}
           className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-semibold shadow-lg shadow-blue-600/25 transition-all flex-shrink-0"

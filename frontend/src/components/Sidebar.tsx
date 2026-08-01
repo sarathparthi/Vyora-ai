@@ -14,6 +14,8 @@ import {
   FileText, 
   Settings, 
   Sparkles,
+  UsersRound,
+  Linkedin,
   X
 } from 'lucide-react';
 import { getCurrentUserEmail } from '@/lib/api';
@@ -21,6 +23,7 @@ import { getCurrentUserEmail } from '@/lib/api';
 const NAV_ITEMS = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
   { name: 'Transactions', href: '/transactions', icon: Receipt },
+  { name: 'Shared Finance', href: '/shared-finance', icon: UsersRound, badge: 'Family' },
   { name: 'Budgets', href: '/budgets', icon: PieChart },
   { name: 'Analytics', href: '/analytics', icon: BarChart3 },
   { name: 'AI Financial Advisor', href: '/ai-advisor', icon: Bot, badge: 'Gemini' },
@@ -108,8 +111,28 @@ export function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
         })}
       </nav>
 
-      {/* Footer Logged-In User Info */}
-      <div className="p-4 border-t border-slate-800/60 bg-slate-900/30">
+      {/* Developer Attribution & Logged-In User Info */}
+      <div className="p-4 border-t border-slate-800/60 bg-slate-900/40 space-y-3">
+        {/* Developer Attribution Badge */}
+        <a
+          href="https://www.linkedin.com/in/sarath-p-a11s/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center justify-between p-2.5 rounded-xl bg-gradient-to-r from-blue-900/30 to-purple-900/30 border border-blue-500/20 hover:border-blue-500/50 transition-all text-xs group"
+        >
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-lg bg-blue-600/20 text-blue-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+              <Linkedin className="w-3.5 h-3.5" />
+            </div>
+            <div>
+              <span className="text-[10px] text-slate-400 block leading-tight">Architected by</span>
+              <span className="font-bold text-white group-hover:text-blue-400 transition-colors">Sarath P</span>
+            </div>
+          </div>
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 font-mono">Contact</span>
+        </a>
+
+        {/* Logged in user profile */}
         <div className="flex items-center gap-3 p-2 rounded-lg bg-slate-800/40 border border-slate-700/40">
           <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white font-bold text-sm flex items-center justify-center border border-blue-500/30">
             {userName.charAt(0).toUpperCase()}
