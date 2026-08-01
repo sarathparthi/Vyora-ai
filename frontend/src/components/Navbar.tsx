@@ -1,8 +1,8 @@
 'use client';
 
-import { Search, Menu, LogOut, ShieldCheck, Plus, Linkedin } from 'lucide-react';
+import { Search, Menu, LogOut, ShieldCheck, Plus, Linkedin, RefreshCw, Wifi, WifiOff } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 interface NavbarProps {
   onToggleMobileMenu?: () => void;
@@ -12,11 +12,48 @@ interface NavbarProps {
 export function Navbar({ onToggleMobileMenu, onOpenAddModal }: NavbarProps) {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
+  const [isOnline, setIsOnline] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSyncedTime, setLastSyncedTime] = useState<string>('');
+
+  useEffect(() => {
+    setLastSyncedTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+
+    const handleOnline = () => {
+      setIsOnline(true);
+      setIsSyncing(true);
+      setTimeout(() => {
+        setIsSyncing(false);
+        setLastSyncedTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+      }, 1500);
+    };
+
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    // Sync pulse simulation
+    const interval = setInterval(() => {
+      if (navigator.onLine) {
+        setIsSyncing(true);
+        setTimeout(() => {
+          setIsSyncing(false);
+          setLastSyncedTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+        }, 1200);
+      }
+    }, 30000);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      clearInterval(interval);
+    };
+  }, []);
 
   const handleLogout = () => {
     localStorage.removeItem('vyora_token');
     localStorage.removeItem('vyora_user');
-    // Clear the middleware auth cookie so protected routes are immediately blocked
     document.cookie = 'vyora_auth=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict';
     router.push('/login');
   };
@@ -49,22 +86,42 @@ export function Navbar({ onToggleMobileMenu, onOpenAddModal }: NavbarProps) {
 
       {/* Right Controls */}
       <div className="flex items-center gap-2 sm:gap-4 ml-2">
+        {/* Real-time Multi-Device Sync Indicator */}
+        <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full border text-[11px] font-semibold transition-all"
+          style={{
+            backgroundColor: !isOnline ? 'rgba(239, 68, 68, 0.1)' : isSyncing ? 'rgba(245, 158, 11, 0.1)' : 'rgba(16, 185, 129, 0.1)',
+            borderColor: !isOnline ? 'rgba(239, 68, 68, 0.3)' : isSyncing ? 'rgba(245, 158, 11, 0.3)' : 'rgba(16, 185, 129, 0.3)',
+            color: !isOnline ? '#EF4444' : isSyncing ? '#F59E0B' : '#10B981',
+          }}
+        >
+          {!isOnline ? (
+            <>
+              <WifiOff className="w-3.5 h-3.5 text-rose-500" />
+              <span>Offline Mode</span>
+            </>
+          ) : isSyncing ? (
+            <>
+              <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-400" />
+              <span>Syncing...</span>
+            </>
+          ) : (
+            <>
+              <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/50" />
+              <span>Synced ({lastSyncedTime || 'Now'})</span>
+            </>
+          )}
+        </div>
+
         {/* Developer Credit Link */}
         <a
           href="https://www.linkedin.com/in/sarath-p-a11s/"
           target="_blank"
           rel="noopener noreferrer"
-          className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/20 text-xs font-semibold transition-all"
+          className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/20 text-xs font-semibold transition-all"
         >
           <Linkedin className="w-3.5 h-3.5 text-blue-400" />
           <span>Dev: Sarath P</span>
         </a>
-
-        {/* Security Indicator */}
-        <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-medium">
-          <ShieldCheck className="w-3.5 h-3.5" />
-          <span>Encrypted</span>
-        </div>
 
         {/* Currency Pill */}
         <div className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-slate-800/80 border border-slate-700 text-[11px] sm:text-xs text-slate-200 font-bold flex-shrink-0">

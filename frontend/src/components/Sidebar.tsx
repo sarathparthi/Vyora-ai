@@ -15,6 +15,7 @@ import {
   Settings, 
   Sparkles,
   UsersRound,
+  Laptop,
   Linkedin,
   X
 } from 'lucide-react';
@@ -29,6 +30,7 @@ const NAV_ITEMS = [
   { name: 'AI Financial Advisor', href: '/ai-advisor', icon: Bot, badge: 'Gemini' },
   { name: 'Wallets & Accounts', href: '/wallets', icon: Wallet },
   { name: 'Savings Goals', href: '/goals', icon: Target },
+  { name: 'Devices & Sessions', href: '/devices', icon: Laptop, badge: 'Sync' },
   { name: 'Reports', href: '/reports', icon: FileText },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
